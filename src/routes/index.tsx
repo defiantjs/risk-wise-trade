@@ -5,7 +5,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+
+type AssetType = "forex" | "gold" | "indices" | "crypto" | "stocks";
+
+const ASSET_TYPES: { value: AssetType; label: string }[] = [
+  { value: "forex", label: "Forex" },
+  { value: "gold", label: "Gold" },
+  { value: "indices", label: "Indices" },
+  { value: "crypto", label: "Crypto" },
+  { value: "stocks", label: "Stocks" },
+];
 
 export const Route = createFileRoute("/")({
   component: TradePlanChecker,
@@ -21,6 +32,9 @@ const DEFAULTS = {
   entry: "",
   stop: "",
   tp: "",
+  assetType: "forex" as AssetType,
+  pipValue: "10",
+  unitLabel: "lots",
 };
 
 function num(v: string): number | null {
@@ -70,9 +84,9 @@ function TradePlanChecker() {
     const aggressiveRisk = riskPct! > 2;
 
     let grade: Grade;
-    if (rr >= 3) grade = "A";
-    else if (rr >= 2) grade = "B";
-    else if (rr >= 1.5) grade = "C";
+    if (rr >= 3 && riskPct! <= 1) grade = "A";
+    else if (rr >= 2 && riskPct! <= 2) grade = "B";
+    else if (rr >= 1.5 && riskPct! <= 2) grade = "C";
     else grade = "Warning";
 
     let coaching: string;
@@ -90,6 +104,12 @@ function TradePlanChecker() {
       );
     }
 
+    const pipValue = num(s.pipValue);
+    let suggestedSize: number | null = null;
+    if (pipValue !== null && pipValue > 0 && stopDist > 0) {
+      suggestedSize = dollarRisk / (stopDist * pipValue);
+    }
+
     return {
       ready: true as const,
       dollarRisk,
@@ -99,6 +119,9 @@ function TradePlanChecker() {
       coaching,
       warnings,
       aggressiveRisk,
+      suggestedSize,
+      assetType: s.assetType,
+      unitLabel: s.unitLabel,
     };
   }, [s]);
 
@@ -204,6 +227,65 @@ function TradePlanChecker() {
                 </Field>
               </div>
 
+              {/* Position Sizing */}
+              <div className="space-y-4 rounded-lg border border-border/60 bg-secondary/20 p-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-foreground/80">
+                    Position sizing
+                  </h3>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Asset type">
+                    <Select
+                      value={s.assetType}
+                      onValueChange={(v) => set("assetType", v as AssetType)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ASSET_TYPES.map((a) => (
+                          <SelectItem key={a.value} value={a.value}>
+                            {a.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field label="Unit label" hint="e.g. lots, contracts">
+                    <Input
+                      value={s.unitLabel}
+                      onChange={(e) => set("unitLabel", e.target.value)}
+                      placeholder="lots"
+                      maxLength={20}
+                    />
+                  </Field>
+                </div>
+                <Field label="Pip / point value" hint="USD per 1 unit">
+                  <PrefixInput
+                    prefix="$"
+                    value={s.pipValue}
+                    onChange={(v) => set("pipValue", v)}
+                    placeholder="10"
+                    inputMode="decimal"
+                  />
+                </Field>
+                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                  Value per pip/point for 1 lot, contract, or unit.
+                </p>
+                {s.assetType === "forex" ? (
+                  <p className="rounded-md border border-border/40 bg-background/40 p-2.5 text-[11px] leading-relaxed text-muted-foreground">
+                    For many USD-quoted forex pairs, 1 standard lot is approximately
+                    <span className="text-foreground"> $10 per pip</span>. Mini lot ≈ $1 per pip. Micro lot ≈ $0.10 per pip.
+                  </p>
+                ) : (
+                  <p className="rounded-md border border-border/40 bg-background/40 p-2.5 text-[11px] leading-relaxed text-muted-foreground">
+                    Contract values vary by broker for {ASSET_TYPES.find((a) => a.value === s.assetType)?.label}.
+                    Check your broker's specs and enter the dollar value per point per unit.
+                  </p>
+                )}
+              </div>
+
               <div className="flex items-center justify-end pt-2">
                 <Button
                   variant="ghost"
@@ -234,6 +316,9 @@ function TradePlanChecker() {
                     grade={result.grade}
                     coaching={result.coaching}
                     warnings={result.warnings}
+                    suggestedSize={result.suggestedSize}
+                    assetType={result.assetType}
+                    unitLabel={result.unitLabel}
                   />
                 ) : (
                   <EmptyResults />
@@ -382,6 +467,12 @@ function gradeStyle(grade: Grade, aggressiveOverride: boolean) {
   }
 }
 
+function formatSize(size: number, assetType: AssetType, unitLabel: string) {
+  const label = assetType === "forex" ? "lots" : (unitLabel?.trim() || "units");
+  const decimals = assetType === "forex" ? 2 : size >= 10 ? 2 : 4;
+  return `${size.toLocaleString(undefined, { maximumFractionDigits: decimals, minimumFractionDigits: assetType === "forex" ? 2 : 0 })} ${label}`;
+}
+
 function ResultsView({
   asset,
   direction,
@@ -391,6 +482,9 @@ function ResultsView({
   grade,
   coaching,
   warnings,
+  suggestedSize,
+  assetType,
+  unitLabel,
 }: {
   asset: string;
   direction: Direction;
@@ -400,9 +494,15 @@ function ResultsView({
   grade: Grade;
   coaching: string;
   warnings: string[];
+  suggestedSize: number | null;
+  assetType: AssetType;
+  unitLabel: string;
 }) {
   const aggressive = warnings.some((w) => w.startsWith("Risk is aggressive"));
   const g = gradeStyle(grade, aggressive);
+  const sizeText = suggestedSize !== null && Number.isFinite(suggestedSize)
+    ? formatSize(suggestedSize, assetType, unitLabel)
+    : "—";
 
   return (
     <div className="space-y-5">
@@ -423,10 +523,11 @@ function ResultsView({
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2">
         <Stat label="Risk" value={fmtMoney(dollarRisk)} tone="danger" />
         <Stat label="Reward" value={fmtMoney(reward)} tone="success" />
         <Stat label="R : R" value={`${rr.toFixed(2)} : 1`} tone="neutral" />
+        <Stat label="Suggested size" value={sizeText} tone="neutral" />
       </div>
 
       {/* Coaching */}
