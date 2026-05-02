@@ -286,6 +286,7 @@ function TradePlanChecker() {
                 )}
               </div>
 
+              <div className="flex items-center justify-end pt-2">
                 <Button
                   variant="ghost"
                   size="sm"
