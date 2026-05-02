@@ -32,6 +32,9 @@ const DEFAULTS = {
   entry: "",
   stop: "",
   tp: "",
+  assetType: "forex" as AssetType,
+  pipValue: "10",
+  unitLabel: "lots",
 };
 
 function num(v: string): number | null {
