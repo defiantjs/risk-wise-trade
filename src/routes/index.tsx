@@ -227,7 +227,65 @@ function TradePlanChecker() {
                 </Field>
               </div>
 
-              <div className="flex items-center justify-end pt-2">
+              {/* Position Sizing */}
+              <div className="space-y-4 rounded-lg border border-border/60 bg-secondary/20 p-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-foreground/80">
+                    Position sizing
+                  </h3>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Asset type">
+                    <Select
+                      value={s.assetType}
+                      onValueChange={(v) => set("assetType", v as AssetType)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ASSET_TYPES.map((a) => (
+                          <SelectItem key={a.value} value={a.value}>
+                            {a.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field label="Unit label" hint="e.g. lots, contracts">
+                    <Input
+                      value={s.unitLabel}
+                      onChange={(e) => set("unitLabel", e.target.value)}
+                      placeholder="lots"
+                      maxLength={20}
+                    />
+                  </Field>
+                </div>
+                <Field label="Pip / point value" hint="USD per 1 unit">
+                  <PrefixInput
+                    prefix="$"
+                    value={s.pipValue}
+                    onChange={(v) => set("pipValue", v)}
+                    placeholder="10"
+                    inputMode="decimal"
+                  />
+                </Field>
+                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                  Value per pip/point for 1 lot, contract, or unit.
+                </p>
+                {s.assetType === "forex" ? (
+                  <p className="rounded-md border border-border/40 bg-background/40 p-2.5 text-[11px] leading-relaxed text-muted-foreground">
+                    For many USD-quoted forex pairs, 1 standard lot is approximately
+                    <span className="text-foreground"> $10 per pip</span>. Mini lot ≈ $1 per pip. Micro lot ≈ $0.10 per pip.
+                  </p>
+                ) : (
+                  <p className="rounded-md border border-border/40 bg-background/40 p-2.5 text-[11px] leading-relaxed text-muted-foreground">
+                    Contract values vary by broker for {ASSET_TYPES.find((a) => a.value === s.assetType)?.label}.
+                    Check your broker's specs and enter the dollar value per point per unit.
+                  </p>
+                )}
+              </div>
+
                 <Button
                   variant="ghost"
                   size="sm"
