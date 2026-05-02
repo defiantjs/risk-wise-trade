@@ -84,9 +84,9 @@ function TradePlanChecker() {
     const aggressiveRisk = riskPct! > 2;
 
     let grade: Grade;
-    if (rr >= 3) grade = "A";
-    else if (rr >= 2) grade = "B";
-    else if (rr >= 1.5) grade = "C";
+    if (rr >= 3 && riskPct! <= 1) grade = "A";
+    else if (rr >= 2 && riskPct! <= 2) grade = "B";
+    else if (rr >= 1.5 && riskPct! <= 2) grade = "C";
     else grade = "Warning";
 
     let coaching: string;
@@ -104,6 +104,12 @@ function TradePlanChecker() {
       );
     }
 
+    const pipValue = num(s.pipValue);
+    let suggestedSize: number | null = null;
+    if (pipValue !== null && pipValue > 0 && stopDist > 0) {
+      suggestedSize = dollarRisk / (stopDist * pipValue);
+    }
+
     return {
       ready: true as const,
       dollarRisk,
@@ -113,6 +119,9 @@ function TradePlanChecker() {
       coaching,
       warnings,
       aggressiveRisk,
+      suggestedSize,
+      assetType: s.assetType,
+      unitLabel: s.unitLabel,
     };
   }, [s]);
 
