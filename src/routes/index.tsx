@@ -316,6 +316,9 @@ function TradePlanChecker() {
                     grade={result.grade}
                     coaching={result.coaching}
                     warnings={result.warnings}
+                    suggestedSize={result.suggestedSize}
+                    assetType={result.assetType}
+                    unitLabel={result.unitLabel}
                   />
                 ) : (
                   <EmptyResults />
