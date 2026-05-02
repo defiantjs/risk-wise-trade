@@ -5,7 +5,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+
+type AssetType = "forex" | "gold" | "indices" | "crypto" | "stocks";
+
+const ASSET_TYPES: { value: AssetType; label: string }[] = [
+  { value: "forex", label: "Forex" },
+  { value: "gold", label: "Gold" },
+  { value: "indices", label: "Indices" },
+  { value: "crypto", label: "Crypto" },
+  { value: "stocks", label: "Stocks" },
+];
 
 export const Route = createFileRoute("/")({
   component: TradePlanChecker,
