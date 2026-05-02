@@ -467,6 +467,12 @@ function gradeStyle(grade: Grade, aggressiveOverride: boolean) {
   }
 }
 
+function formatSize(size: number, assetType: AssetType, unitLabel: string) {
+  const label = assetType === "forex" ? "lots" : (unitLabel?.trim() || "units");
+  const decimals = assetType === "forex" ? 2 : size >= 10 ? 2 : 4;
+  return `${size.toLocaleString(undefined, { maximumFractionDigits: decimals, minimumFractionDigits: assetType === "forex" ? 2 : 0 })} ${label}`;
+}
+
 function ResultsView({
   asset,
   direction,
@@ -476,6 +482,9 @@ function ResultsView({
   grade,
   coaching,
   warnings,
+  suggestedSize,
+  assetType,
+  unitLabel,
 }: {
   asset: string;
   direction: Direction;
@@ -485,9 +494,15 @@ function ResultsView({
   grade: Grade;
   coaching: string;
   warnings: string[];
+  suggestedSize: number | null;
+  assetType: AssetType;
+  unitLabel: string;
 }) {
   const aggressive = warnings.some((w) => w.startsWith("Risk is aggressive"));
   const g = gradeStyle(grade, aggressive);
+  const sizeText = suggestedSize !== null && Number.isFinite(suggestedSize)
+    ? formatSize(suggestedSize, assetType, unitLabel)
+    : "—";
 
   return (
     <div className="space-y-5">
@@ -508,10 +523,11 @@ function ResultsView({
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2">
         <Stat label="Risk" value={fmtMoney(dollarRisk)} tone="danger" />
         <Stat label="Reward" value={fmtMoney(reward)} tone="success" />
         <Stat label="R : R" value={`${rr.toFixed(2)} : 1`} tone="neutral" />
+        <Stat label="Suggested size" value={sizeText} tone="neutral" />
       </div>
 
       {/* Coaching */}
