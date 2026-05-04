@@ -105,6 +105,7 @@ function TradePlanChecker() {
     const entry = num(s.entry);
     const stop = num(s.stop);
     const tp = num(s.tp);
+    const pipValue = num(s.pipValue);
 
     const ready =
       balance !== null && balance > 0 &&
@@ -112,17 +113,22 @@ function TradePlanChecker() {
       entry !== null && entry > 0 &&
       stop !== null && stop > 0 &&
       tp !== null && tp > 0 &&
+      pipValue !== null && pipValue > 0 &&
       Math.abs(entry - stop) > 0;
 
     if (!ready) return { ready: false as const };
 
-    const dollarRisk = (balance! * riskPct!) / 100;
     const stopDist = Math.abs(entry! - stop!);
     const targetDist = Math.abs(tp! - entry!);
-    const rr = targetDist / stopDist;
-    const reward = dollarRisk * rr;
-    const moveToStopPct = (stopDist / entry!) * 100;
-    const moveToTargetPct = (targetDist / entry!) * 100;
+    const dollarRisk = safe((balance! * riskPct!) / 100);
+    const rr = stopDist > 0 ? safe(targetDist / stopDist) : null;
+    const reward = dollarRisk !== null && rr !== null ? safe(dollarRisk * rr) : null;
+    const moveToStopPct = entry! > 0 ? safe((stopDist / entry!) * 100) : null;
+    const moveToTargetPct = entry! > 0 ? safe((targetDist / entry!) * 100) : null;
+    const suggestedSize =
+      pipValue !== null && pipValue > 0 && stopDist > 0 && dollarRisk !== null
+        ? safe(dollarRisk / (stopDist * pipValue))
+        : null;
 
     const directionMismatch =
       (s.direction === "buy" && (stop! >= entry! || tp! <= entry!)) ||
@@ -131,36 +137,24 @@ function TradePlanChecker() {
     const aggressiveRisk = riskPct! > 2;
 
     let grade: Grade;
-    if (rr >= 3 && riskPct! <= 1) grade = "A";
-    else if (rr >= 2 && riskPct! <= 2) grade = "B";
-    else if (rr >= 1.5) grade = "C";
+    if (rr !== null && rr >= 3 && riskPct! <= 1) grade = "A";
+    else if (rr !== null && rr >= 2 && riskPct! <= 2) grade = "B";
+    else if (rr !== null && rr >= 1.5) grade = "C";
     else grade = "Warning";
 
     let verdict: Verdict;
-    if (rr >= 2 && riskPct! <= 2) verdict = "valid";
-    else if (rr >= 1.5 && rr < 2) verdict = "adjust";
+    if (rr !== null && rr >= 2 && riskPct! <= 2) verdict = "valid";
+    else if (rr !== null && rr >= 1.5 && rr < 2) verdict = "adjust";
     else verdict = "no";
 
     let coaching: string;
-    if (rr < 1.5) coaching = "Reward profile is weak. This setup may not justify the risk.";
+    if (rr === null || rr < 1.5) coaching = "Reward profile is weak. This setup may not justify the risk.";
     else if (rr < 2) coaching = "Acceptable setup. Confirm structure, timing, and market context.";
     else coaching = "Strong reward profile. Still confirm market structure, DXY alignment, and news timing before entering.";
 
     const warnings: string[] = [];
     if (aggressiveRisk) warnings.push("Risk is aggressive. Consider reducing position size.");
-    if (directionMismatch) {
-      warnings.push(
-        s.direction === "buy"
-          ? "For a Buy: stop loss should be below entry and take profit above entry."
-          : "For a Sell: stop loss should be above entry and take profit below entry."
-      );
-    }
-
-    const pipValue = num(s.pipValue);
-    let suggestedSize: number | null = null;
-    if (pipValue !== null && pipValue > 0 && stopDist > 0) {
-      suggestedSize = dollarRisk / (stopDist * pipValue);
-    }
+    if (directionMismatch) warnings.push("Trade levels do not match selected direction.");
 
     return {
       ready: true as const,
