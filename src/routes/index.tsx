@@ -62,9 +62,15 @@ const DEFAULTS = {
 };
 
 function num(v: string): number | null {
-  if (v === "" || v === "-" || v === ".") return null;
-  const n = Number(v);
+  if (typeof v !== "string") return null;
+  const cleaned = v.replace(/[, _]/g, "").trim();
+  if (cleaned === "" || cleaned === "-" || cleaned === ".") return null;
+  const n = Number(cleaned);
   return Number.isFinite(n) ? n : null;
+}
+
+function safe(n: number | null | undefined): number | null {
+  return n !== null && n !== undefined && Number.isFinite(n) ? n : null;
 }
 
 function fmtMoney(v: number) {
@@ -99,6 +105,7 @@ function TradePlanChecker() {
     const entry = num(s.entry);
     const stop = num(s.stop);
     const tp = num(s.tp);
+    const pipValue = num(s.pipValue);
 
     const ready =
       balance !== null && balance > 0 &&
@@ -106,17 +113,22 @@ function TradePlanChecker() {
       entry !== null && entry > 0 &&
       stop !== null && stop > 0 &&
       tp !== null && tp > 0 &&
+      pipValue !== null && pipValue > 0 &&
       Math.abs(entry - stop) > 0;
 
     if (!ready) return { ready: false as const };
 
-    const dollarRisk = (balance! * riskPct!) / 100;
     const stopDist = Math.abs(entry! - stop!);
     const targetDist = Math.abs(tp! - entry!);
-    const rr = targetDist / stopDist;
-    const reward = dollarRisk * rr;
-    const moveToStopPct = (stopDist / entry!) * 100;
-    const moveToTargetPct = (targetDist / entry!) * 100;
+    const dollarRisk = safe((balance! * riskPct!) / 100);
+    const rr = stopDist > 0 ? safe(targetDist / stopDist) : null;
+    const reward = dollarRisk !== null && rr !== null ? safe(dollarRisk * rr) : null;
+    const moveToStopPct = entry! > 0 ? safe((stopDist / entry!) * 100) : null;
+    const moveToTargetPct = entry! > 0 ? safe((targetDist / entry!) * 100) : null;
+    const suggestedSize =
+      pipValue !== null && pipValue > 0 && stopDist > 0 && dollarRisk !== null
+        ? safe(dollarRisk / (stopDist * pipValue))
+        : null;
 
     const directionMismatch =
       (s.direction === "buy" && (stop! >= entry! || tp! <= entry!)) ||
@@ -125,36 +137,24 @@ function TradePlanChecker() {
     const aggressiveRisk = riskPct! > 2;
 
     let grade: Grade;
-    if (rr >= 3 && riskPct! <= 1) grade = "A";
-    else if (rr >= 2 && riskPct! <= 2) grade = "B";
-    else if (rr >= 1.5) grade = "C";
+    if (rr !== null && rr >= 3 && riskPct! <= 1) grade = "A";
+    else if (rr !== null && rr >= 2 && riskPct! <= 2) grade = "B";
+    else if (rr !== null && rr >= 1.5) grade = "C";
     else grade = "Warning";
 
     let verdict: Verdict;
-    if (rr >= 2 && riskPct! <= 2) verdict = "valid";
-    else if (rr >= 1.5 && rr < 2) verdict = "adjust";
+    if (rr !== null && rr >= 2 && riskPct! <= 2) verdict = "valid";
+    else if (rr !== null && rr >= 1.5 && rr < 2) verdict = "adjust";
     else verdict = "no";
 
     let coaching: string;
-    if (rr < 1.5) coaching = "Reward profile is weak. This setup may not justify the risk.";
+    if (rr === null || rr < 1.5) coaching = "Reward profile is weak. This setup may not justify the risk.";
     else if (rr < 2) coaching = "Acceptable setup. Confirm structure, timing, and market context.";
     else coaching = "Strong reward profile. Still confirm market structure, DXY alignment, and news timing before entering.";
 
     const warnings: string[] = [];
     if (aggressiveRisk) warnings.push("Risk is aggressive. Consider reducing position size.");
-    if (directionMismatch) {
-      warnings.push(
-        s.direction === "buy"
-          ? "For a Buy: stop loss should be below entry and take profit above entry."
-          : "For a Sell: stop loss should be above entry and take profit below entry."
-      );
-    }
-
-    const pipValue = num(s.pipValue);
-    let suggestedSize: number | null = null;
-    if (pipValue !== null && pipValue > 0 && stopDist > 0) {
-      suggestedSize = dollarRisk / (stopDist * pipValue);
-    }
+    if (directionMismatch) warnings.push("Trade levels do not match selected direction.");
 
     return {
       ready: true as const,
@@ -189,6 +189,14 @@ function TradePlanChecker() {
       ? formatSize(result.suggestedSize)
       : "—";
 
+  const dash = "—";
+  const moneyOrDash = (n: number | null) => (n === null ? dash : fmtMoney(n));
+  const rrText = result.ready && result.rr !== null ? `${result.rr.toFixed(2)} : 1` : dash;
+  const moveStopText = result.ready && result.moveToStopPct !== null ? `${result.moveToStopPct.toFixed(2)}%` : dash;
+  const moveTargetText = result.ready && result.moveToTargetPct !== null ? `${result.moveToTargetPct.toFixed(2)}%` : dash;
+  const riskText = result.ready ? moneyOrDash(result.dollarRisk) : dash;
+  const rewardText = result.ready ? moneyOrDash(result.reward) : dash;
+
   const handleSave = () => {
     if (!result.ready) return;
     const lines = [
@@ -200,11 +208,11 @@ function TradePlanChecker() {
       "",
       `Account Balance: ${fmtMoney(num(s.balance)!)}`,
       `Risk %: ${s.riskPct}%`,
-      `Dollar Risk: ${fmtMoney(result.dollarRisk)}`,
-      `Estimated Reward: ${fmtMoney(result.reward)}`,
-      `R:R: ${result.rr.toFixed(2)} : 1`,
-      `Move to Stop: ${result.moveToStopPct.toFixed(2)}%`,
-      `Move to Target: ${result.moveToTargetPct.toFixed(2)}%`,
+      `Dollar Risk: ${riskText}`,
+      `Estimated Reward: ${rewardText}`,
+      `R:R: ${rrText}`,
+      `Move to Stop: ${moveStopText}`,
+      `Move to Target: ${moveTargetText}`,
       `Suggested Size: ${sizeText}`,
       "",
       `Grade: ${result.grade} (${GRADE_LABEL[result.grade]})`,
@@ -229,8 +237,8 @@ function TradePlanChecker() {
       {/* Sticky mini bar */}
       {result.ready && (
         <MiniBar
-          risk={fmtMoney(result.dollarRisk)}
-          rr={`${result.rr.toFixed(2)} : 1`}
+          risk={riskText}
+          rr={rrText}
           size={sizeText}
           grade={result.grade}
         />
@@ -371,15 +379,15 @@ function TradePlanChecker() {
                   <ResultsView
                     asset={s.asset}
                     direction={s.direction}
-                    dollarRisk={result.dollarRisk}
-                    reward={result.reward}
-                    rr={result.rr}
+                    riskText={riskText}
+                    rewardText={rewardText}
+                    rrText={rrText}
                     grade={result.grade}
                     verdict={result.verdict}
                     coaching={result.coaching}
                     warnings={result.warnings}
-                    moveToStopPct={result.moveToStopPct}
-                    moveToTargetPct={result.moveToTargetPct}
+                    moveToStopText={moveStopText}
+                    moveToTargetText={moveTargetText}
                     sizeText={sizeText}
                     onSave={handleSave}
                   />
@@ -476,7 +484,7 @@ function EmptyResults() {
       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted/60">
         <Info className="h-5 w-5 text-muted-foreground" />
       </div>
-      <p className="text-sm text-muted-foreground">Fill in your balance, risk, entry, stop, and target to see the analysis.</p>
+      <p className="text-sm text-muted-foreground">Enter trade levels to see your risk, reward, size, and execution verdict.</p>
     </div>
   );
 }
@@ -521,12 +529,12 @@ function gradeColor(grade: Grade) {
 }
 
 function ResultsView({
-  asset, direction, dollarRisk, reward, rr, grade, verdict,
-  coaching, warnings, moveToStopPct, moveToTargetPct, sizeText, onSave,
+  asset, direction, riskText, rewardText, rrText, grade, verdict,
+  coaching, warnings, moveToStopText, moveToTargetText, sizeText, onSave,
 }: {
-  asset: string; direction: Direction; dollarRisk: number; reward: number; rr: number;
+  asset: string; direction: Direction; riskText: string; rewardText: string; rrText: string;
   grade: Grade; verdict: Verdict; coaching: string; warnings: string[];
-  moveToStopPct: number; moveToTargetPct: number; sizeText: string; onSave: () => void;
+  moveToStopText: string; moveToTargetText: string; sizeText: string; onSave: () => void;
 }) {
   return (
     <div className="space-y-5">
@@ -551,12 +559,12 @@ function ResultsView({
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-2">
-        <Stat icon={<AlertTriangle className="h-3.5 w-3.5" />} label="Risk" value={fmtMoney(dollarRisk)} tone="danger" />
-        <Stat icon={<span className="text-sm leading-none">💰</span>} label="Reward" value={fmtMoney(reward)} tone="success" />
-        <Stat icon={<Scale className="h-3.5 w-3.5" />} label="R : R" value={`${rr.toFixed(2)} : 1`} tone="neutral" />
+        <Stat icon={<AlertTriangle className="h-3.5 w-3.5" />} label="Risk" value={riskText} tone="danger" />
+        <Stat icon={<span className="text-sm leading-none">💰</span>} label="Reward" value={rewardText} tone="success" />
+        <Stat icon={<Scale className="h-3.5 w-3.5" />} label="R : R" value={rrText} tone="neutral" />
         <Stat icon={<Package className="h-3.5 w-3.5" />} label="Suggested size" value={sizeText} tone="neutral" />
-        <Stat label="Move to stop" value={`${moveToStopPct.toFixed(2)}%`} tone="neutral" />
-        <Stat label="Move to target" value={`${moveToTargetPct.toFixed(2)}%`} tone="neutral" />
+        <Stat label="Move to stop" value={moveToStopText} tone="neutral" />
+        <Stat label="Move to target" value={moveToTargetText} tone="neutral" />
       </div>
 
       {/* Coaching */}
