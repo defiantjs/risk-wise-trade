@@ -62,9 +62,15 @@ const DEFAULTS = {
 };
 
 function num(v: string): number | null {
-  if (v === "" || v === "-" || v === ".") return null;
-  const n = Number(v);
+  if (typeof v !== "string") return null;
+  const cleaned = v.replace(/[, _]/g, "").trim();
+  if (cleaned === "" || cleaned === "-" || cleaned === ".") return null;
+  const n = Number(cleaned);
   return Number.isFinite(n) ? n : null;
+}
+
+function safe(n: number | null | undefined): number | null {
+  return n !== null && n !== undefined && Number.isFinite(n) ? n : null;
 }
 
 function fmtMoney(v: number) {
