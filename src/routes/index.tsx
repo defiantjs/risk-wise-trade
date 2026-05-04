@@ -529,12 +529,12 @@ function gradeColor(grade: Grade) {
 }
 
 function ResultsView({
-  asset, direction, dollarRisk, reward, rr, grade, verdict,
-  coaching, warnings, moveToStopPct, moveToTargetPct, sizeText, onSave,
+  asset, direction, riskText, rewardText, rrText, grade, verdict,
+  coaching, warnings, moveToStopText, moveToTargetText, sizeText, onSave,
 }: {
-  asset: string; direction: Direction; dollarRisk: number; reward: number; rr: number;
+  asset: string; direction: Direction; riskText: string; rewardText: string; rrText: string;
   grade: Grade; verdict: Verdict; coaching: string; warnings: string[];
-  moveToStopPct: number; moveToTargetPct: number; sizeText: string; onSave: () => void;
+  moveToStopText: string; moveToTargetText: string; sizeText: string; onSave: () => void;
 }) {
   return (
     <div className="space-y-5">
@@ -559,12 +559,12 @@ function ResultsView({
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-2">
-        <Stat icon={<AlertTriangle className="h-3.5 w-3.5" />} label="Risk" value={fmtMoney(dollarRisk)} tone="danger" />
-        <Stat icon={<span className="text-sm leading-none">💰</span>} label="Reward" value={fmtMoney(reward)} tone="success" />
-        <Stat icon={<Scale className="h-3.5 w-3.5" />} label="R : R" value={`${rr.toFixed(2)} : 1`} tone="neutral" />
+        <Stat icon={<AlertTriangle className="h-3.5 w-3.5" />} label="Risk" value={riskText} tone="danger" />
+        <Stat icon={<span className="text-sm leading-none">💰</span>} label="Reward" value={rewardText} tone="success" />
+        <Stat icon={<Scale className="h-3.5 w-3.5" />} label="R : R" value={rrText} tone="neutral" />
         <Stat icon={<Package className="h-3.5 w-3.5" />} label="Suggested size" value={sizeText} tone="neutral" />
-        <Stat label="Move to stop" value={`${moveToStopPct.toFixed(2)}%`} tone="neutral" />
-        <Stat label="Move to target" value={`${moveToTargetPct.toFixed(2)}%`} tone="neutral" />
+        <Stat label="Move to stop" value={moveToStopText} tone="neutral" />
+        <Stat label="Move to target" value={moveToTargetText} tone="neutral" />
       </div>
 
       {/* Coaching */}
