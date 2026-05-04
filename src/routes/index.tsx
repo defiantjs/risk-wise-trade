@@ -1,28 +1,51 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
-import { Activity, AlertTriangle, CheckCircle2, Info, RotateCcw, TrendingDown, TrendingUp } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Activity,
+  AlertTriangle,
+  CheckCircle2,
+  Download,
+  Info,
+  Package,
+  RotateCcw,
+  Scale,
+  TrendingDown,
+  TrendingUp,
+  Wallet,
+  XCircle,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 type AssetType = "forex" | "gold" | "indices" | "crypto" | "stocks";
+type Direction = "buy" | "sell";
+type SizingMode = "quick" | "advanced";
 
-const ASSET_TYPES: { value: AssetType; label: string }[] = [
-  { value: "forex", label: "Forex" },
-  { value: "gold", label: "Gold" },
-  { value: "indices", label: "Indices" },
-  { value: "crypto", label: "Crypto" },
-  { value: "stocks", label: "Stocks" },
+const ASSET_TYPES: {
+  value: AssetType;
+  label: string;
+  pipValue: string;
+  unit: string;
+  hint: string;
+}[] = [
+  { value: "forex", label: "Forex", pipValue: "10", unit: "lots", hint: "Standard lot ≈ $10/pip on USD-quoted pairs." },
+  { value: "gold", label: "Gold", pipValue: "1", unit: "oz", hint: "XAUUSD ≈ $1 per $0.01 move per 1 oz contract." },
+  { value: "indices", label: "Indices", pipValue: "1", unit: "contracts", hint: "Typical CFD ≈ $1 per point per contract. Verify with broker." },
+  { value: "crypto", label: "Crypto", pipValue: "1", unit: "units", hint: "Spot crypto ≈ $1 per $1 move per 1 unit." },
+  { value: "stocks", label: "Stocks", pipValue: "1", unit: "shares", hint: "$1 move per share = $1 P&L per share." },
 ];
 
-export const Route = createFileRoute("/")({
-  component: TradePlanChecker,
-});
-
-type Direction = "buy" | "sell";
+export const Route = createFileRoute("/")({ component: TradePlanChecker });
 
 const DEFAULTS = {
   balance: "",
@@ -35,6 +58,7 @@ const DEFAULTS = {
   assetType: "forex" as AssetType,
   pipValue: "10",
   unitLabel: "lots",
+  sizingMode: "quick" as SizingMode,
 };
 
 function num(v: string): number | null {
@@ -48,11 +72,26 @@ function fmtMoney(v: number) {
 }
 
 type Grade = "A" | "B" | "C" | "Warning";
+type Verdict = "valid" | "adjust" | "no";
+
+const GRADE_LABEL: Record<Grade, string> = {
+  A: "Elite Setup",
+  B: "Valid Setup",
+  C: "Marginal Setup",
+  Warning: "Invalid",
+};
 
 function TradePlanChecker() {
   const [s, setS] = useState(DEFAULTS);
   const set = <K extends keyof typeof DEFAULTS>(k: K, v: (typeof DEFAULTS)[K]) =>
     setS((prev) => ({ ...prev, [k]: v }));
+
+  // Auto-fill pip value + unit when in Quick mode and asset type changes
+  useEffect(() => {
+    if (s.sizingMode !== "quick") return;
+    const a = ASSET_TYPES.find((x) => x.value === s.assetType)!;
+    setS((prev) => ({ ...prev, pipValue: a.pipValue, unitLabel: a.unit }));
+  }, [s.assetType, s.sizingMode]);
 
   const result = useMemo(() => {
     const balance = num(s.balance);
@@ -76,6 +115,8 @@ function TradePlanChecker() {
     const targetDist = Math.abs(tp! - entry!);
     const rr = targetDist / stopDist;
     const reward = dollarRisk * rr;
+    const moveToStopPct = (stopDist / entry!) * 100;
+    const moveToTargetPct = (targetDist / entry!) * 100;
 
     const directionMismatch =
       (s.direction === "buy" && (stop! >= entry! || tp! <= entry!)) ||
@@ -86,8 +127,13 @@ function TradePlanChecker() {
     let grade: Grade;
     if (rr >= 3 && riskPct! <= 1) grade = "A";
     else if (rr >= 2 && riskPct! <= 2) grade = "B";
-    else if (rr >= 1.5 && riskPct! <= 2) grade = "C";
+    else if (rr >= 1.5) grade = "C";
     else grade = "Warning";
+
+    let verdict: Verdict;
+    if (rr >= 2 && riskPct! <= 2) verdict = "valid";
+    else if (rr >= 1.5 && rr < 2) verdict = "adjust";
+    else verdict = "no";
 
     let coaching: string;
     if (rr < 1.5) coaching = "Reward profile is weak. This setup may not justify the risk.";
@@ -116,183 +162,198 @@ function TradePlanChecker() {
       reward,
       rr,
       grade,
+      verdict,
       coaching,
       warnings,
-      aggressiveRisk,
+      moveToStopPct,
+      moveToTargetPct,
       suggestedSize,
       assetType: s.assetType,
       unitLabel: s.unitLabel,
     };
   }, [s]);
 
+  const formatSize = (size: number) => {
+    const label = s.sizingMode === "quick"
+      ? ASSET_TYPES.find((a) => a.value === s.assetType)!.unit
+      : s.unitLabel?.trim() || "units";
+    const decimals = s.assetType === "forex" ? 2 : size >= 10 ? 2 : 4;
+    return `${size.toLocaleString(undefined, {
+      maximumFractionDigits: decimals,
+      minimumFractionDigits: s.assetType === "forex" ? 2 : 0,
+    })} ${label}`;
+  };
+
+  const sizeText =
+    result.ready && result.suggestedSize !== null && Number.isFinite(result.suggestedSize)
+      ? formatSize(result.suggestedSize)
+      : "—";
+
+  const handleSave = () => {
+    if (!result.ready) return;
+    const lines = [
+      "TRADE PLAN",
+      "==========",
+      `Asset: ${s.asset || "—"}`,
+      `Direction: ${s.direction.toUpperCase()}`,
+      `Entry: ${s.entry}   Stop: ${s.stop}   Target: ${s.tp}`,
+      "",
+      `Account Balance: ${fmtMoney(num(s.balance)!)}`,
+      `Risk %: ${s.riskPct}%`,
+      `Dollar Risk: ${fmtMoney(result.dollarRisk)}`,
+      `Estimated Reward: ${fmtMoney(result.reward)}`,
+      `R:R: ${result.rr.toFixed(2)} : 1`,
+      `Move to Stop: ${result.moveToStopPct.toFixed(2)}%`,
+      `Move to Target: ${result.moveToTargetPct.toFixed(2)}%`,
+      `Suggested Size: ${sizeText}`,
+      "",
+      `Grade: ${result.grade} (${GRADE_LABEL[result.grade]})`,
+      `Verdict: ${verdictText(result.verdict)}`,
+      "",
+      `Generated: ${new Date().toLocaleString()}`,
+    ].join("\n");
+
+    const blob = new Blob([lines], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `trade-plan-${s.asset || "setup"}-${Date.now()}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:py-14">
-        {/* Header */}
+      {/* Sticky mini bar */}
+      {result.ready && (
+        <MiniBar
+          risk={fmtMoney(result.dollarRisk)}
+          rr={`${result.rr.toFixed(2)} : 1`}
+          size={sizeText}
+          grade={result.grade}
+        />
+      )}
+
+      <div className="mx-auto max-w-6xl px-4 py-10 pb-28 sm:px-6 lg:py-14 lg:pb-14 lg:pt-24">
         <header className="mb-8 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-primary ring-1 ring-primary/30">
               <Activity className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Trade Plan Checker</h1>
-              <p className="text-xs text-muted-foreground sm:text-sm">Pre-trade risk &amp; reward sanity check</p>
+              <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Trade Confidence Checker</h1>
+              <p className="text-xs text-muted-foreground sm:text-sm">Should you actually take this trade?</p>
             </div>
           </div>
         </header>
 
         <div className="grid gap-6 lg:grid-cols-5">
           {/* Inputs */}
-          <Card className="border-border/60 bg-card/80 shadow-xl shadow-black/20 backdrop-blur lg:col-span-3">
+          <Card className="border-border/50 bg-card/50 shadow-lg shadow-black/10 backdrop-blur lg:col-span-3">
             <CardHeader>
               <CardTitle className="text-base font-semibold">Trade inputs</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Account balance" hint="USD">
-                  <PrefixInput
-                    prefix="$"
-                    value={s.balance}
-                    onChange={(v) => set("balance", v)}
-                    placeholder="10,000"
-                    inputMode="decimal"
-                  />
-                </Field>
-                <Field label="Risk per trade" hint="% of balance">
-                  <SuffixInput
-                    suffix="%"
-                    value={s.riskPct}
-                    onChange={(v) => set("riskPct", v)}
-                    placeholder="1"
-                    inputMode="decimal"
-                  />
-                </Field>
-              </div>
-
-              <Field label="Direction">
-                <div className="grid grid-cols-2 gap-2">
-                  <DirectionButton
-                    active={s.direction === "buy"}
-                    tone="buy"
-                    onClick={() => set("direction", "buy")}
-                  >
-                    <TrendingUp className="h-4 w-4" /> Buy
-                  </DirectionButton>
-                  <DirectionButton
-                    active={s.direction === "sell"}
-                    tone="sell"
-                    onClick={() => set("direction", "sell")}
-                  >
-                    <TrendingDown className="h-4 w-4" /> Sell
-                  </DirectionButton>
+            <CardContent className="space-y-6">
+              {/* 1. Account + Risk */}
+              <Section title="1. Account & risk" icon={<Wallet className="h-3.5 w-3.5" />}>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Account balance" hint="USD">
+                    <PrefixInput prefix="$" value={s.balance} onChange={(v) => set("balance", v)} placeholder="10,000" inputMode="decimal" />
+                  </Field>
+                  <Field label="Risk per trade" hint="% of balance">
+                    <SuffixInput suffix="%" value={s.riskPct} onChange={(v) => set("riskPct", v)} placeholder="1" inputMode="decimal" />
+                  </Field>
                 </div>
-              </Field>
+              </Section>
 
-              <Field label="Asset / pair">
-                <Input
-                  value={s.asset}
-                  onChange={(e) => set("asset", e.target.value)}
-                  placeholder="EURUSD, BTCUSD, AAPL…"
-                  maxLength={20}
-                />
-              </Field>
-
-              <div className="grid gap-4 sm:grid-cols-3">
-                <Field label="Entry">
-                  <Input
-                    value={s.entry}
-                    onChange={(e) => set("entry", e.target.value)}
-                    placeholder="0.00"
-                    inputMode="decimal"
-                    className="font-mono"
-                  />
-                </Field>
-                <Field label="Stop loss">
-                  <Input
-                    value={s.stop}
-                    onChange={(e) => set("stop", e.target.value)}
-                    placeholder="0.00"
-                    inputMode="decimal"
-                    className="font-mono"
-                  />
-                </Field>
-                <Field label="Take profit">
-                  <Input
-                    value={s.tp}
-                    onChange={(e) => set("tp", e.target.value)}
-                    placeholder="0.00"
-                    inputMode="decimal"
-                    className="font-mono"
-                  />
-                </Field>
-              </div>
-
-              {/* Position Sizing */}
-              <div className="space-y-4 rounded-lg border border-border/60 bg-secondary/20 p-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-foreground/80">
-                    Position sizing
-                  </h3>
+              {/* 2. Position Sizing */}
+              <Section title="2. Position sizing" icon={<Package className="h-3.5 w-3.5" />}>
+                <div className="mb-3 inline-flex rounded-md border border-border/60 bg-secondary/30 p-0.5">
+                  {(["quick", "advanced"] as SizingMode[]).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => set("sizingMode", m)}
+                      className={cn(
+                        "rounded px-3 py-1 text-xs font-medium capitalize transition-colors",
+                        s.sizingMode === m
+                          ? "bg-primary text-primary-foreground shadow"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {m}
+                    </button>
+                  ))}
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="Asset type">
-                    <Select
-                      value={s.assetType}
-                      onValueChange={(v) => set("assetType", v as AssetType)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
+                    <Select value={s.assetType} onValueChange={(v) => set("assetType", v as AssetType)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {ASSET_TYPES.map((a) => (
-                          <SelectItem key={a.value} value={a.value}>
-                            {a.label}
-                          </SelectItem>
-                        ))}
+                        {ASSET_TYPES.map((a) => <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </Field>
-                  <Field label="Unit label" hint="e.g. lots, contracts">
-                    <Input
-                      value={s.unitLabel}
-                      onChange={(e) => set("unitLabel", e.target.value)}
-                      placeholder="lots"
-                      maxLength={20}
-                    />
+                  {s.sizingMode === "advanced" ? (
+                    <Field label="Unit label">
+                      <Input value={s.unitLabel} onChange={(e) => set("unitLabel", e.target.value)} placeholder="lots" maxLength={20} />
+                    </Field>
+                  ) : (
+                    <Field label="Unit">
+                      <Input value={ASSET_TYPES.find((a) => a.value === s.assetType)!.unit} disabled className="bg-muted/40" />
+                    </Field>
+                  )}
+                </div>
+                {s.sizingMode === "advanced" && (
+                  <div className="mt-4">
+                    <Field label="Pip / point value" hint="USD per unit">
+                      <PrefixInput prefix="$" value={s.pipValue} onChange={(v) => set("pipValue", v)} placeholder="10" inputMode="decimal" />
+                    </Field>
+                    <p className="mt-1.5 text-[11px] text-muted-foreground">Value per pip/point for 1 lot, contract, or unit.</p>
+                  </div>
+                )}
+                <p className="mt-3 rounded-md border border-border/40 bg-background/40 p-2.5 text-[11px] leading-relaxed text-muted-foreground">
+                  {ASSET_TYPES.find((a) => a.value === s.assetType)!.hint}
+                  {s.sizingMode === "quick" && (
+                    <span className="text-foreground"> Auto-set to ${ASSET_TYPES.find((a) => a.value === s.assetType)!.pipValue}/pip.</span>
+                  )}
+                </p>
+              </Section>
+
+              {/* 3. Trade Levels */}
+              <Section title="3. Trade levels" icon={<Activity className="h-3.5 w-3.5" />}>
+                <Field label="Direction">
+                  <div className="grid grid-cols-2 gap-2">
+                    <DirectionButton active={s.direction === "buy"} tone="buy" onClick={() => set("direction", "buy")}>
+                      <TrendingUp className="h-4 w-4" /> Buy
+                    </DirectionButton>
+                    <DirectionButton active={s.direction === "sell"} tone="sell" onClick={() => set("direction", "sell")}>
+                      <TrendingDown className="h-4 w-4" /> Sell
+                    </DirectionButton>
+                  </div>
+                </Field>
+                <div className="mt-4">
+                  <Field label="Asset / pair">
+                    <Input value={s.asset} onChange={(e) => set("asset", e.target.value)} placeholder="EURUSD, BTCUSD, AAPL…" maxLength={20} />
                   </Field>
                 </div>
-                <Field label="Pip / point value" hint="USD per 1 unit">
-                  <PrefixInput
-                    prefix="$"
-                    value={s.pipValue}
-                    onChange={(v) => set("pipValue", v)}
-                    placeholder="10"
-                    inputMode="decimal"
-                  />
-                </Field>
-                <p className="text-[11px] leading-relaxed text-muted-foreground">
-                  Value per pip/point for 1 lot, contract, or unit.
-                </p>
-                {s.assetType === "forex" ? (
-                  <p className="rounded-md border border-border/40 bg-background/40 p-2.5 text-[11px] leading-relaxed text-muted-foreground">
-                    For many USD-quoted forex pairs, 1 standard lot is approximately
-                    <span className="text-foreground"> $10 per pip</span>. Mini lot ≈ $1 per pip. Micro lot ≈ $0.10 per pip.
-                  </p>
-                ) : (
-                  <p className="rounded-md border border-border/40 bg-background/40 p-2.5 text-[11px] leading-relaxed text-muted-foreground">
-                    Contract values vary by broker for {ASSET_TYPES.find((a) => a.value === s.assetType)?.label}.
-                    Check your broker's specs and enter the dollar value per point per unit.
-                  </p>
-                )}
-              </div>
+                <div className="mt-4 grid gap-4 sm:grid-cols-3">
+                  <Field label="Entry">
+                    <Input value={s.entry} onChange={(e) => set("entry", e.target.value)} placeholder="0.00" inputMode="decimal" className="font-mono" />
+                  </Field>
+                  <Field label="Stop loss">
+                    <Input value={s.stop} onChange={(e) => set("stop", e.target.value)} placeholder="0.00" inputMode="decimal" className="font-mono" />
+                  </Field>
+                  <Field label="Take profit">
+                    <Input value={s.tp} onChange={(e) => set("tp", e.target.value)} placeholder="0.00" inputMode="decimal" className="font-mono" />
+                  </Field>
+                </div>
+              </Section>
 
               <div className="flex items-center justify-end pt-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setS(DEFAULTS)}
-                  className="text-muted-foreground hover:text-foreground"
-                >
+                <Button variant="ghost" size="sm" onClick={() => setS(DEFAULTS)} className="text-muted-foreground hover:text-foreground">
                   <RotateCcw className="mr-2 h-3.5 w-3.5" /> Reset
                 </Button>
               </div>
@@ -301,7 +362,7 @@ function TradePlanChecker() {
 
           {/* Results */}
           <div className="lg:col-span-2">
-            <Card className="sticky top-6 border-border/60 bg-card/80 shadow-xl shadow-black/20 backdrop-blur">
+            <Card className="sticky top-20 border-primary/20 bg-card shadow-2xl shadow-primary/5 ring-1 ring-primary/10">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base font-semibold">Results</CardTitle>
               </CardHeader>
@@ -314,11 +375,13 @@ function TradePlanChecker() {
                     reward={result.reward}
                     rr={result.rr}
                     grade={result.grade}
+                    verdict={result.verdict}
                     coaching={result.coaching}
                     warnings={result.warnings}
-                    suggestedSize={result.suggestedSize}
-                    assetType={result.assetType}
-                    unitLabel={result.unitLabel}
+                    moveToStopPct={result.moveToStopPct}
+                    moveToTargetPct={result.moveToTargetPct}
+                    sizeText={sizeText}
+                    onSave={handleSave}
                   />
                 ) : (
                   <EmptyResults />
@@ -338,6 +401,18 @@ function TradePlanChecker() {
 
 /* ---------- Subcomponents ---------- */
 
+function Section({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border border-border/40 bg-secondary/10 p-4">
+      <div className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-foreground/70">
+        {icon}
+        {title}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
@@ -350,85 +425,43 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   );
 }
 
-function PrefixInput({
-  prefix,
-  value,
-  onChange,
-  placeholder,
-  inputMode,
-}: {
-  prefix: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+function PrefixInput({ prefix, value, onChange, placeholder, inputMode }: {
+  prefix: string; value: string; onChange: (v: string) => void;
+  placeholder?: string; inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
 }) {
   return (
     <div className="relative">
-      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-        {prefix}
-      </span>
-      <Input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        inputMode={inputMode}
-        className="pl-7 font-mono"
-      />
+      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{prefix}</span>
+      <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} inputMode={inputMode} className="pl-7 font-mono" />
     </div>
   );
 }
 
-function SuffixInput({
-  suffix,
-  value,
-  onChange,
-  placeholder,
-  inputMode,
-}: {
-  suffix: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+function SuffixInput({ suffix, value, onChange, placeholder, inputMode }: {
+  suffix: string; value: string; onChange: (v: string) => void;
+  placeholder?: string; inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
 }) {
   return (
     <div className="relative">
-      <Input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        inputMode={inputMode}
-        className="pr-8 font-mono"
-      />
-      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-        {suffix}
-      </span>
+      <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} inputMode={inputMode} className="pr-8 font-mono" />
+      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{suffix}</span>
     </div>
   );
 }
 
-function DirectionButton({
-  active,
-  tone,
-  children,
-  onClick,
-}: {
-  active: boolean;
-  tone: "buy" | "sell";
-  children: React.ReactNode;
-  onClick: () => void;
+function DirectionButton({ active, tone, children, onClick }: {
+  active: boolean; tone: "buy" | "sell"; children: React.ReactNode; onClick: () => void;
 }) {
   const activeClass =
     tone === "buy"
-      ? "bg-success/15 text-success ring-1 ring-success/40"
-      : "bg-danger/15 text-danger ring-1 ring-danger/40";
+      ? "bg-success/20 text-success ring-2 ring-success/60 shadow-[0_0_20px_-4px_var(--success)]"
+      : "bg-danger/20 text-danger ring-2 ring-danger/60 shadow-[0_0_20px_-4px_var(--danger)]";
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        "flex h-10 items-center justify-center gap-2 rounded-md border border-border/60 bg-secondary/40 text-sm font-medium transition-colors hover:bg-secondary",
+        "flex h-11 items-center justify-center gap-2 rounded-md border border-border/60 bg-secondary/40 text-sm font-semibold transition-all duration-200 hover:bg-secondary",
         active && activeClass
       )}
     >
@@ -443,91 +476,87 @@ function EmptyResults() {
       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted/60">
         <Info className="h-5 w-5 text-muted-foreground" />
       </div>
-      <p className="text-sm text-muted-foreground">
-        Fill in your balance, risk, entry, stop, and target to see the analysis.
-      </p>
+      <p className="text-sm text-muted-foreground">Fill in your balance, risk, entry, stop, and target to see the analysis.</p>
     </div>
   );
 }
 
-function gradeStyle(grade: Grade, aggressiveOverride: boolean) {
-  if (aggressiveOverride && grade !== "Warning") {
-    // Risk too high = degrade visual to warning, but keep letter
-    return { ring: "ring-warning/40", bg: "bg-warning/15", text: "text-warning", label: grade };
-  }
-  switch (grade) {
-    case "A":
-      return { ring: "ring-success/40", bg: "bg-success/15", text: "text-success", label: "A" };
-    case "B":
-      return { ring: "ring-success/40", bg: "bg-success/10", text: "text-success", label: "B" };
-    case "C":
-      return { ring: "ring-warning/40", bg: "bg-warning/15", text: "text-warning", label: "C" };
-    case "Warning":
-      return { ring: "ring-danger/40", bg: "bg-danger/15", text: "text-danger", label: "!" };
-  }
+function verdictText(v: Verdict) {
+  if (v === "valid") return "✅ VALID SETUP";
+  if (v === "adjust") return "⚠ ADJUST BEFORE ENTRY";
+  return "❌ DO NOT TAKE THIS TRADE";
 }
 
-function formatSize(size: number, assetType: AssetType, unitLabel: string) {
-  const label = assetType === "forex" ? "lots" : (unitLabel?.trim() || "units");
-  const decimals = assetType === "forex" ? 2 : size >= 10 ? 2 : 4;
-  return `${size.toLocaleString(undefined, { maximumFractionDigits: decimals, minimumFractionDigits: assetType === "forex" ? 2 : 0 })} ${label}`;
+function VerdictBanner({ verdict }: { verdict: Verdict }) {
+  const cfg = {
+    valid: { bg: "bg-success/15", ring: "ring-success/50", text: "text-success", icon: <CheckCircle2 className="h-6 w-6" />, label: "VALID SETUP", sub: "Risk and reward profile meet the threshold." },
+    adjust: { bg: "bg-warning/15", ring: "ring-warning/50", text: "text-warning", icon: <AlertTriangle className="h-6 w-6" />, label: "ADJUST BEFORE ENTRY", sub: "Reward is borderline. Tighten stop or extend target." },
+    no: { bg: "bg-danger/15", ring: "ring-danger/50", text: "text-danger", icon: <XCircle className="h-6 w-6" />, label: "DO NOT TAKE THIS TRADE", sub: "Reward is too low or risk is too aggressive." },
+  }[verdict];
+
+  return (
+    <div
+      key={verdict}
+      className={cn(
+        "animate-in fade-in zoom-in-95 duration-300 rounded-lg p-4 ring-2",
+        cfg.bg, cfg.ring
+      )}
+    >
+      <div className={cn("flex items-center gap-3", cfg.text)}>
+        {cfg.icon}
+        <div className="text-base font-bold tracking-wide sm:text-lg">{cfg.label}</div>
+      </div>
+      <p className="mt-1.5 text-xs leading-relaxed text-foreground/80">{cfg.sub}</p>
+    </div>
+  );
+}
+
+function gradeColor(grade: Grade) {
+  switch (grade) {
+    case "A": return "text-success";
+    case "B": return "text-success";
+    case "C": return "text-warning";
+    case "Warning": return "text-danger";
+  }
 }
 
 function ResultsView({
-  asset,
-  direction,
-  dollarRisk,
-  reward,
-  rr,
-  grade,
-  coaching,
-  warnings,
-  suggestedSize,
-  assetType,
-  unitLabel,
+  asset, direction, dollarRisk, reward, rr, grade, verdict,
+  coaching, warnings, moveToStopPct, moveToTargetPct, sizeText, onSave,
 }: {
-  asset: string;
-  direction: Direction;
-  dollarRisk: number;
-  reward: number;
-  rr: number;
-  grade: Grade;
-  coaching: string;
-  warnings: string[];
-  suggestedSize: number | null;
-  assetType: AssetType;
-  unitLabel: string;
+  asset: string; direction: Direction; dollarRisk: number; reward: number; rr: number;
+  grade: Grade; verdict: Verdict; coaching: string; warnings: string[];
+  moveToStopPct: number; moveToTargetPct: number; sizeText: string; onSave: () => void;
 }) {
-  const aggressive = warnings.some((w) => w.startsWith("Risk is aggressive"));
-  const g = gradeStyle(grade, aggressive);
-  const sizeText = suggestedSize !== null && Number.isFinite(suggestedSize)
-    ? formatSize(suggestedSize, assetType, unitLabel)
-    : "—";
-
   return (
     <div className="space-y-5">
-      {/* Grade */}
-      <div className={cn("flex items-center gap-4 rounded-lg p-4 ring-1", g.bg, g.ring)}>
-        <div className={cn("flex h-14 w-14 items-center justify-center rounded-md bg-background/40 text-2xl font-bold", g.text)}>
-          {g.label}
-        </div>
+      <VerdictBanner verdict={verdict} />
+
+      {/* Asset summary + grade */}
+      <div className="flex items-center justify-between rounded-lg border border-border/60 bg-secondary/30 px-3 py-2.5">
         <div className="min-w-0">
-          <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Trade grade</div>
+          <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Setup</div>
           <div className="truncate text-sm font-medium">
-            {asset ? asset.toUpperCase() : "Setup"}{" "}
-            <span className={direction === "buy" ? "text-success" : "text-danger"}>
-              · {direction === "buy" ? "Long" : "Short"}
-            </span>
+            {asset ? asset.toUpperCase() : "Unnamed"}{" "}
+            <span className={direction === "buy" ? "text-success" : "text-danger"}>· {direction === "buy" ? "Long" : "Short"}</span>
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Grade</div>
+          <div className={cn("font-mono text-sm font-bold", gradeColor(grade))}>
+            {grade} <span className="text-xs font-medium opacity-80">({GRADE_LABEL[grade]})</span>
           </div>
         </div>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-2">
-        <Stat label="Risk" value={fmtMoney(dollarRisk)} tone="danger" />
-        <Stat label="Reward" value={fmtMoney(reward)} tone="success" />
-        <Stat label="R : R" value={`${rr.toFixed(2)} : 1`} tone="neutral" />
-        <Stat label="Suggested size" value={sizeText} tone="neutral" />
+        <Stat icon={<AlertTriangle className="h-3.5 w-3.5" />} label="Risk" value={fmtMoney(dollarRisk)} tone="danger" />
+        <Stat icon={<span className="text-sm leading-none">💰</span>} label="Reward" value={fmtMoney(reward)} tone="success" />
+        <Stat icon={<Scale className="h-3.5 w-3.5" />} label="R : R" value={`${rr.toFixed(2)} : 1`} tone="neutral" />
+        <Stat icon={<Package className="h-3.5 w-3.5" />} label="Suggested size" value={sizeText} tone="neutral" />
+        <Stat label="Move to stop" value={`${moveToStopPct.toFixed(2)}%`} tone="neutral" />
+        <Stat label="Move to target" value={`${moveToTargetPct.toFixed(2)}%`} tone="neutral" />
       </div>
 
       {/* Coaching */}
@@ -544,31 +573,78 @@ function ResultsView({
         </div>
       </div>
 
+      {/* Reality check */}
+      <div className="rounded-lg border border-border/60 bg-background/40 p-3">
+        <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-foreground/80">Before you execute</div>
+        <ul className="space-y-1.5 text-xs text-foreground/85">
+          {[
+            "Does market structure support this trade?",
+            "Is DXY / macro context aligned?",
+            "Is there high-impact news nearby?",
+            "Is this part of your plan or impulsive?",
+          ].map((q) => (
+            <li key={q} className="flex items-start gap-2">
+              <span className="mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-primary/70" />
+              <span>{q}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
       {/* Warnings */}
       {warnings.length > 0 && (
         <ul className="space-y-2">
           {warnings.map((w, i) => (
-            <li
-              key={i}
-              className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 p-2.5 text-xs text-warning"
-            >
+            <li key={i} className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 p-2.5 text-xs text-warning">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
               <span className="leading-relaxed">{w}</span>
             </li>
           ))}
         </ul>
       )}
+
+      <Button onClick={onSave} className="w-full" variant="secondary">
+        <Download className="mr-2 h-4 w-4" /> Save Trade Plan
+      </Button>
     </div>
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: string; tone: "success" | "danger" | "neutral" }) {
-  const toneClass =
-    tone === "success" ? "text-success" : tone === "danger" ? "text-danger" : "text-foreground";
+function Stat({
+  icon, label, value, tone,
+}: { icon?: React.ReactNode; label: string; value: string; tone: "success" | "danger" | "neutral" }) {
+  const toneClass = tone === "success" ? "text-success" : tone === "danger" ? "text-danger" : "text-foreground";
   return (
-    <div className="rounded-md border border-border/60 bg-secondary/30 p-3">
-      <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className={cn("mt-1 truncate font-mono text-sm font-semibold sm:text-base", toneClass)}>{value}</div>
+    <div className="rounded-md border border-border/60 bg-secondary/30 p-3 transition-colors">
+      <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        {icon}
+        <span>{label}</span>
+      </div>
+      <div key={value} className={cn("animate-in fade-in slide-in-from-bottom-1 duration-200 mt-1 truncate font-mono text-sm font-semibold sm:text-base", toneClass)}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function MiniBar({ risk, rr, size, grade }: { risk: string; rr: string; size: string; grade: Grade }) {
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-card/90 px-3 py-2 backdrop-blur lg:inset-x-auto lg:bottom-auto lg:right-4 lg:top-4 lg:rounded-lg lg:border lg:px-3 lg:py-2 lg:shadow-xl">
+      <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 text-[11px] sm:text-xs lg:max-w-none lg:gap-4">
+        <MiniItem label="Risk" value={risk} />
+        <MiniItem label="R:R" value={rr} />
+        <MiniItem label="Size" value={size} />
+        <MiniItem label="Grade" value={grade} valueClass={gradeColor(grade)} />
+      </div>
+    </div>
+  );
+}
+
+function MiniItem({ label, value, valueClass }: { label: string; value: string; valueClass?: string }) {
+  return (
+    <div className="flex min-w-0 flex-col leading-tight">
+      <span className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className={cn("truncate font-mono font-semibold", valueClass)}>{value}</span>
     </div>
   );
 }
