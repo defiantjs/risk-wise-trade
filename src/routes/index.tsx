@@ -379,15 +379,15 @@ function TradePlanChecker() {
                   <ResultsView
                     asset={s.asset}
                     direction={s.direction}
-                    dollarRisk={result.dollarRisk}
-                    reward={result.reward}
-                    rr={result.rr}
+                    riskText={riskText}
+                    rewardText={rewardText}
+                    rrText={rrText}
                     grade={result.grade}
                     verdict={result.verdict}
                     coaching={result.coaching}
                     warnings={result.warnings}
-                    moveToStopPct={result.moveToStopPct}
-                    moveToTargetPct={result.moveToTargetPct}
+                    moveToStopText={moveStopText}
+                    moveToTargetText={moveTargetText}
                     sizeText={sizeText}
                     onSave={handleSave}
                   />
