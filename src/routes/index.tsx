@@ -189,6 +189,14 @@ function TradePlanChecker() {
       ? formatSize(result.suggestedSize)
       : "—";
 
+  const dash = "—";
+  const moneyOrDash = (n: number | null) => (n === null ? dash : fmtMoney(n));
+  const rrText = result.ready && result.rr !== null ? `${result.rr.toFixed(2)} : 1` : dash;
+  const moveStopText = result.ready && result.moveToStopPct !== null ? `${result.moveToStopPct.toFixed(2)}%` : dash;
+  const moveTargetText = result.ready && result.moveToTargetPct !== null ? `${result.moveToTargetPct.toFixed(2)}%` : dash;
+  const riskText = result.ready ? moneyOrDash(result.dollarRisk) : dash;
+  const rewardText = result.ready ? moneyOrDash(result.reward) : dash;
+
   const handleSave = () => {
     if (!result.ready) return;
     const lines = [
@@ -200,11 +208,11 @@ function TradePlanChecker() {
       "",
       `Account Balance: ${fmtMoney(num(s.balance)!)}`,
       `Risk %: ${s.riskPct}%`,
-      `Dollar Risk: ${fmtMoney(result.dollarRisk)}`,
-      `Estimated Reward: ${fmtMoney(result.reward)}`,
-      `R:R: ${result.rr.toFixed(2)} : 1`,
-      `Move to Stop: ${result.moveToStopPct.toFixed(2)}%`,
-      `Move to Target: ${result.moveToTargetPct.toFixed(2)}%`,
+      `Dollar Risk: ${riskText}`,
+      `Estimated Reward: ${rewardText}`,
+      `R:R: ${rrText}`,
+      `Move to Stop: ${moveStopText}`,
+      `Move to Target: ${moveTargetText}`,
       `Suggested Size: ${sizeText}`,
       "",
       `Grade: ${result.grade} (${GRADE_LABEL[result.grade]})`,
@@ -229,8 +237,8 @@ function TradePlanChecker() {
       {/* Sticky mini bar */}
       {result.ready && (
         <MiniBar
-          risk={fmtMoney(result.dollarRisk)}
-          rr={`${result.rr.toFixed(2)} : 1`}
+          risk={riskText}
+          rr={rrText}
           size={sizeText}
           grade={result.grade}
         />
