@@ -136,20 +136,24 @@ function TradePlanChecker() {
 
     const aggressiveRisk = riskPct! > 2;
 
+    // Round to 2 decimals for threshold comparisons so displayed R:R matches grading.
+    const rrCmp = rr !== null ? Math.round(rr * 100) / 100 : null;
+    const riskCmp = Math.round(riskPct! * 100) / 100;
+
     let grade: Grade;
-    if (rr !== null && rr >= 3 && riskPct! <= 1) grade = "A";
-    else if (rr !== null && rr >= 2 && riskPct! <= 2) grade = "B";
-    else if (rr !== null && rr >= 1.5) grade = "C";
+    if (rrCmp !== null && rrCmp >= 3 && riskCmp <= 1) grade = "A";
+    else if (rrCmp !== null && rrCmp >= 2 && riskCmp <= 2) grade = "B";
+    else if (rrCmp !== null && rrCmp >= 1.5 && rrCmp < 2 && riskCmp <= 2) grade = "C";
     else grade = "Warning";
 
     let verdict: Verdict;
-    if (rr !== null && rr >= 2 && riskPct! <= 2) verdict = "valid";
-    else if (rr !== null && rr >= 1.5 && rr < 2) verdict = "adjust";
+    if (rrCmp !== null && rrCmp >= 2 && riskCmp <= 2) verdict = "valid";
+    else if (rrCmp !== null && rrCmp >= 1.5 && rrCmp < 2 && riskCmp <= 2) verdict = "adjust";
     else verdict = "no";
 
     let coaching: string;
-    if (rr === null || rr < 1.5) coaching = "Reward profile is weak. This setup may not justify the risk.";
-    else if (rr < 2) coaching = "Acceptable setup. Confirm structure, timing, and market context.";
+    if (rrCmp === null || rrCmp < 1.5) coaching = "Reward profile is weak. This setup may not justify the risk.";
+    else if (rrCmp < 2) coaching = "Acceptable setup. Confirm structure, timing, and market context.";
     else coaching = "Strong reward profile. Still confirm market structure, DXY alignment, and news timing before entering.";
 
     const warnings: string[] = [];
