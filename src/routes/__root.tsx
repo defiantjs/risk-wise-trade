@@ -29,10 +29,10 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Trade Plan Checker — Risk & Reward Calculator" },
+      { title: "PipGrade — Risk & Reward Calculator" },
       { name: "description", content: "Check risk, reward, and trade quality before entering a trade. Free pre-trade sanity check for traders." },
-      { name: "author", content: "Trade Plan Checker" },
-      { property: "og:title", content: "Trade Plan Checker — Risk & Reward Calculator" },
+      { name: "author", content: "PipGrade" },
+      { property: "og:title", content: "PipGrade — Risk & Reward Calculator" },
       { property: "og:description", content: "Check risk, reward, and trade quality before entering a trade." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
