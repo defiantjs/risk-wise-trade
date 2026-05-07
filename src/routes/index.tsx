@@ -255,7 +255,7 @@ function TradePlanChecker() {
               <Activity className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Trade Confidence Checker</h1>
+              <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">PipGrade</h1>
               <p className="text-xs text-muted-foreground sm:text-sm">Should you actually take this trade?</p>
             </div>
           </div>
