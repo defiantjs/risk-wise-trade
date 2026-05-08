@@ -643,7 +643,7 @@ function Stat({
 
 function MiniBar({ risk, rr, size, grade }: { risk: string; rr: string; size: string; grade: Grade }) {
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-card/90 px-3 py-2 backdrop-blur lg:inset-x-auto lg:bottom-auto lg:right-4 lg:top-4 lg:rounded-lg lg:border lg:px-3 lg:py-2 lg:shadow-xl">
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-card/70 px-3 py-2 backdrop-blur-xl backdrop-saturate-150 shadow-[0_-8px_32px_-12px_rgba(0,0,0,0.5)] lg:inset-x-auto lg:bottom-auto lg:right-4 lg:top-4 lg:rounded-xl lg:border lg:px-4 lg:py-2.5 lg:shadow-[0_8px_32px_-8px_rgba(0,0,0,0.6)]">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 text-[11px] sm:text-xs lg:max-w-none lg:gap-4">
         <MiniItem label="Risk" value={risk} />
         <MiniItem label="R:R" value={rr} />
