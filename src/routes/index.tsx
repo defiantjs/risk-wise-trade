@@ -251,11 +251,12 @@ function TradePlanChecker() {
       <div className="mx-auto max-w-6xl px-4 py-10 pb-28 sm:px-6 lg:py-14 lg:pb-14 lg:pt-24">
         <header className="mb-8 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-primary ring-1 ring-primary/30">
+            <div className="relative flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-primary/30 to-primary/5 text-primary ring-1 ring-primary/40 shadow-[0_0_24px_-6px_var(--primary)]">
               <Activity className="h-5 w-5" />
+              <span className="absolute -inset-px rounded-xl ring-1 ring-inset ring-white/5" />
             </div>
             <div>
-              <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">PipGrade</h1>
+              <h1 className="bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-xl font-semibold tracking-tight text-transparent sm:text-2xl">PipGrade</h1>
               <p className="text-xs text-muted-foreground sm:text-sm">Pre-trade validation and execution framework</p>
               <p className="mt-0.5 hidden text-[11px] italic text-muted-foreground/70 sm:block">Validate risk. Grade setups. Execute with confidence.</p>
             </div>
