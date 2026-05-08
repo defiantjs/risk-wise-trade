@@ -503,17 +503,17 @@ function verdictText(v: Verdict) {
 
 function VerdictBanner({ verdict }: { verdict: Verdict }) {
   const cfg = {
-    valid: { bg: "bg-success/15", ring: "ring-success/50", text: "text-success", icon: <CheckCircle2 className="h-6 w-6" />, label: "VALID SETUP", sub: "Risk and reward profile meet the threshold." },
-    adjust: { bg: "bg-warning/15", ring: "ring-warning/50", text: "text-warning", icon: <AlertTriangle className="h-6 w-6" />, label: "ADJUST BEFORE ENTRY", sub: "Reward is borderline. Tighten stop or extend target." },
-    no: { bg: "bg-danger/15", ring: "ring-danger/50", text: "text-danger", icon: <XCircle className="h-6 w-6" />, label: "DO NOT TAKE THIS TRADE", sub: "Reward is too low or risk is too aggressive." },
+    valid: { grad: "from-success/25 via-success/10 to-transparent", ring: "ring-success/40", text: "text-success", glow: "shadow-[0_0_40px_-12px_var(--success)]", icon: <CheckCircle2 className="h-6 w-6" />, label: "VALID SETUP", sub: "Risk and reward profile meet the threshold." },
+    adjust: { grad: "from-warning/25 via-warning/10 to-transparent", ring: "ring-warning/40", text: "text-warning", glow: "shadow-[0_0_40px_-12px_var(--warning)]", icon: <AlertTriangle className="h-6 w-6" />, label: "ADJUST BEFORE ENTRY", sub: "Reward is borderline. Tighten stop or extend target." },
+    no: { grad: "from-danger/25 via-danger/10 to-transparent", ring: "ring-danger/40", text: "text-danger", glow: "shadow-[0_0_40px_-12px_var(--danger)]", icon: <XCircle className="h-6 w-6" />, label: "DO NOT TAKE THIS TRADE", sub: "Reward is too low or risk is too aggressive." },
   }[verdict];
 
   return (
     <div
       key={verdict}
       className={cn(
-        "animate-in fade-in zoom-in-95 duration-300 rounded-lg p-4 ring-2",
-        cfg.bg, cfg.ring
+        "animate-in fade-in zoom-in-95 duration-300 relative overflow-hidden rounded-xl bg-gradient-to-br p-4 ring-1",
+        cfg.grad, cfg.ring, cfg.glow
       )}
     >
       <div className={cn("flex items-center gap-3", cfg.text)}>
