@@ -489,7 +489,7 @@ function EmptyResults() {
       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted/60">
         <Info className="h-5 w-5 text-muted-foreground" />
       </div>
-      <p className="text-sm text-muted-foreground">Enter trade levels to see your risk, reward, size, and execution verdict.</p>
+      <p className="text-sm text-muted-foreground">Enter trade levels to validate your setup.</p>
     </div>
   );
 }
