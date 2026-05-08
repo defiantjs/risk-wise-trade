@@ -251,11 +251,12 @@ function TradePlanChecker() {
       <div className="mx-auto max-w-6xl px-4 py-10 pb-28 sm:px-6 lg:py-14 lg:pb-14 lg:pt-24">
         <header className="mb-8 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-primary ring-1 ring-primary/30">
+            <div className="relative flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-primary/30 to-primary/5 text-primary ring-1 ring-primary/40 shadow-[0_0_24px_-6px_var(--primary)]">
               <Activity className="h-5 w-5" />
+              <span className="absolute -inset-px rounded-xl ring-1 ring-inset ring-white/5" />
             </div>
             <div>
-              <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">PipGrade</h1>
+              <h1 className="bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-xl font-semibold tracking-tight text-transparent sm:text-2xl">PipGrade</h1>
               <p className="text-xs text-muted-foreground sm:text-sm">Pre-trade validation and execution framework</p>
               <p className="mt-0.5 hidden text-[11px] italic text-muted-foreground/70 sm:block">Validate risk. Grade setups. Execute with confidence.</p>
             </div>
@@ -264,7 +265,7 @@ function TradePlanChecker() {
 
         <div className="grid gap-6 lg:grid-cols-5">
           {/* Inputs */}
-          <Card className="border-border/50 bg-card/50 shadow-lg shadow-black/10 backdrop-blur lg:col-span-3">
+          <Card className="glass border-border/50 shadow-xl shadow-black/20 lg:col-span-3">
             <CardHeader>
               <CardTitle className="text-base font-semibold">Trade inputs</CardTitle>
             </CardHeader>
@@ -375,7 +376,7 @@ function TradePlanChecker() {
 
           {/* Results */}
           <div className="lg:col-span-2">
-            <Card className="sticky top-20 border-primary/20 bg-card shadow-2xl shadow-primary/5 ring-1 ring-primary/10">
+            <Card className="glass sticky top-20 border-primary/25 shadow-2xl shadow-primary/10 ring-1 ring-primary/20">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base font-semibold">Results</CardTitle>
               </CardHeader>
@@ -502,17 +503,17 @@ function verdictText(v: Verdict) {
 
 function VerdictBanner({ verdict }: { verdict: Verdict }) {
   const cfg = {
-    valid: { bg: "bg-success/15", ring: "ring-success/50", text: "text-success", icon: <CheckCircle2 className="h-6 w-6" />, label: "VALID SETUP", sub: "Risk and reward profile meet the threshold." },
-    adjust: { bg: "bg-warning/15", ring: "ring-warning/50", text: "text-warning", icon: <AlertTriangle className="h-6 w-6" />, label: "ADJUST BEFORE ENTRY", sub: "Reward is borderline. Tighten stop or extend target." },
-    no: { bg: "bg-danger/15", ring: "ring-danger/50", text: "text-danger", icon: <XCircle className="h-6 w-6" />, label: "DO NOT TAKE THIS TRADE", sub: "Reward is too low or risk is too aggressive." },
+    valid: { grad: "from-success/25 via-success/10 to-transparent", ring: "ring-success/40", text: "text-success", glow: "shadow-[0_0_40px_-12px_var(--success)]", icon: <CheckCircle2 className="h-6 w-6" />, label: "VALID SETUP", sub: "Risk and reward profile meet the threshold." },
+    adjust: { grad: "from-warning/25 via-warning/10 to-transparent", ring: "ring-warning/40", text: "text-warning", glow: "shadow-[0_0_40px_-12px_var(--warning)]", icon: <AlertTriangle className="h-6 w-6" />, label: "ADJUST BEFORE ENTRY", sub: "Reward is borderline. Tighten stop or extend target." },
+    no: { grad: "from-danger/25 via-danger/10 to-transparent", ring: "ring-danger/40", text: "text-danger", glow: "shadow-[0_0_40px_-12px_var(--danger)]", icon: <XCircle className="h-6 w-6" />, label: "DO NOT TAKE THIS TRADE", sub: "Reward is too low or risk is too aggressive." },
   }[verdict];
 
   return (
     <div
       key={verdict}
       className={cn(
-        "animate-in fade-in zoom-in-95 duration-300 rounded-lg p-4 ring-2",
-        cfg.bg, cfg.ring
+        "animate-in fade-in zoom-in-95 duration-300 relative overflow-hidden rounded-xl bg-gradient-to-br p-4 ring-1",
+        cfg.grad, cfg.ring, cfg.glow
       )}
     >
       <div className={cn("flex items-center gap-3", cfg.text)}>
@@ -642,7 +643,7 @@ function Stat({
 
 function MiniBar({ risk, rr, size, grade }: { risk: string; rr: string; size: string; grade: Grade }) {
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-card/90 px-3 py-2 backdrop-blur lg:inset-x-auto lg:bottom-auto lg:right-4 lg:top-4 lg:rounded-lg lg:border lg:px-3 lg:py-2 lg:shadow-xl">
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-card/70 px-3 py-2 backdrop-blur-xl backdrop-saturate-150 shadow-[0_-8px_32px_-12px_rgba(0,0,0,0.5)] lg:inset-x-auto lg:bottom-auto lg:right-4 lg:top-4 lg:rounded-xl lg:border lg:px-4 lg:py-2.5 lg:shadow-[0_8px_32px_-8px_rgba(0,0,0,0.6)]">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 text-[11px] sm:text-xs lg:max-w-none lg:gap-4">
         <MiniItem label="Risk" value={risk} />
         <MiniItem label="R:R" value={rr} />
