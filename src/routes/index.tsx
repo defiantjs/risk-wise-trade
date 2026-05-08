@@ -265,7 +265,7 @@ function TradePlanChecker() {
 
         <div className="grid gap-6 lg:grid-cols-5">
           {/* Inputs */}
-          <Card className="border-border/50 bg-card/50 shadow-lg shadow-black/10 backdrop-blur lg:col-span-3">
+          <Card className="glass border-border/50 shadow-xl shadow-black/20 lg:col-span-3">
             <CardHeader>
               <CardTitle className="text-base font-semibold">Trade inputs</CardTitle>
             </CardHeader>
