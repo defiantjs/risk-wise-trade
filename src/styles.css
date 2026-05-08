@@ -160,5 +160,22 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+    background-image:
+      radial-gradient(1100px 600px at 85% -10%, oklch(0.74 0.17 162 / 0.10), transparent 60%),
+      radial-gradient(900px 500px at -10% 10%, oklch(0.55 0.16 250 / 0.08), transparent 55%),
+      radial-gradient(700px 400px at 50% 110%, oklch(0.6 0.18 295 / 0.05), transparent 60%);
+    background-attachment: fixed;
+  }
+
+  /* Tabular numerics so monospace stat columns align cleanly */
+  .font-mono {
+    font-variant-numeric: tabular-nums;
   }
 }
+
+@utility glass {
+  background-color: color-mix(in oklab, var(--card) 70%, transparent);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+}
+
