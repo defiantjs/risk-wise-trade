@@ -376,7 +376,7 @@ function TradePlanChecker() {
 
           {/* Results */}
           <div className="lg:col-span-2">
-            <Card className="sticky top-20 border-primary/20 bg-card shadow-2xl shadow-primary/5 ring-1 ring-primary/10">
+            <Card className="glass sticky top-20 border-primary/25 shadow-2xl shadow-primary/10 ring-1 ring-primary/20">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base font-semibold">Results</CardTitle>
               </CardHeader>
