@@ -256,7 +256,8 @@ function TradePlanChecker() {
             </div>
             <div>
               <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">PipGrade</h1>
-              <p className="text-xs text-muted-foreground sm:text-sm">Should you actually take this trade?</p>
+              <p className="text-xs text-muted-foreground sm:text-sm">Pre-trade validation and execution framework</p>
+              <p className="mt-0.5 hidden text-[11px] italic text-muted-foreground/70 sm:block">Validate risk. Grade setups. Execute with confidence.</p>
             </div>
           </div>
         </header>
@@ -488,7 +489,7 @@ function EmptyResults() {
       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted/60">
         <Info className="h-5 w-5 text-muted-foreground" />
       </div>
-      <p className="text-sm text-muted-foreground">Enter trade levels to see your risk, reward, size, and execution verdict.</p>
+      <p className="text-sm text-muted-foreground">Enter trade levels to validate your setup.</p>
     </div>
   );
 }
