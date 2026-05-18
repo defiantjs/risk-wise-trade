@@ -541,13 +541,42 @@ function DirectionButton({ active, tone, children, onClick }: {
   );
 }
 
-function EmptyResults() {
+function EmptyResults({ sizeNote }: { sizeNote: string | null }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted/60">
         <Info className="h-5 w-5 text-muted-foreground" />
       </div>
-      <p className="text-sm text-muted-foreground">Enter trade levels to validate your setup.</p>
+      <p className="text-sm text-muted-foreground">
+        {sizeNote ?? "Enter balance, risk %, entry, and stop loss to see your suggested size."}
+      </p>
+      <p className="text-xs text-muted-foreground/70">Add a take profit to grade the full setup.</p>
+    </div>
+  );
+}
+
+function PartialResults({
+  sizeText, sizeNote, riskConfirmText,
+}: { sizeText: string; sizeNote: string | null; riskConfirmText: string | null }) {
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-primary/30 bg-gradient-to-br from-primary/15 via-primary/5 to-transparent p-4 shadow-[0_0_28px_-12px_var(--primary)]">
+        <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-primary/90">
+          <Package className="h-3.5 w-3.5" /> Suggested size
+        </div>
+        <div key={sizeText} className="animate-in fade-in slide-in-from-bottom-1 duration-200 mt-1 font-mono text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+          {sizeText}
+        </div>
+        {sizeNote ? (
+          <p className="mt-1.5 text-xs text-warning">{sizeNote}</p>
+        ) : riskConfirmText ? (
+          <p className="mt-1.5 text-xs text-muted-foreground">{riskConfirmText}</p>
+        ) : null}
+      </div>
+      <div className="rounded-lg border border-border/60 bg-secondary/30 p-3 text-xs text-muted-foreground">
+        <Info className="mr-1.5 inline h-3.5 w-3.5 align-[-2px] text-muted-foreground" />
+        Add a take profit to see R:R, reward, verdict, and grade.
+      </div>
     </div>
   );
 }
