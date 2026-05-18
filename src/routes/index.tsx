@@ -225,7 +225,7 @@ function TradePlanChecker() {
   const rrText = result.ready && result.rr !== null ? `${result.rr.toFixed(2)} : 1` : dash;
   const moveStopText = result.ready && result.moveToStopPct !== null ? `${result.moveToStopPct.toFixed(2)}%` : dash;
   const moveTargetText = result.ready && result.moveToTargetPct !== null ? `${result.moveToTargetPct.toFixed(2)}%` : dash;
-  const riskText = result.ready ? moneyOrDash(result.dollarRisk) : dash;
+  const riskText = dollarRiskVal !== null ? moneyOrDash(dollarRiskVal) : dash;
   const rewardText = result.ready ? moneyOrDash(result.reward) : dash;
 
   // Size validation messages
@@ -241,8 +241,8 @@ function TradePlanChecker() {
       : null;
 
   const riskConfirmText =
-    result.ready && result.suggestedSize !== null && result.dollarRisk !== null
-      ? `At this size, max account risk = ${num(s.riskPct)}% / ${fmtMoney(result.dollarRisk)}`
+    suggestedSizeVal !== null && dollarRiskVal !== null
+      ? `At this size, max account risk = ${num(s.riskPct)}% / ${fmtMoney(dollarRiskVal)}`
       : null;
 
   const handleSave = () => {
