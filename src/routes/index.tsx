@@ -452,8 +452,10 @@ function TradePlanChecker() {
                     riskConfirmText={riskConfirmText}
                     onSave={handleSave}
                   />
+                ) : result.sizingReady ? (
+                  <PartialResults sizeText={sizeText} sizeNote={sizeNote} riskConfirmText={riskConfirmText} />
                 ) : (
-                  <EmptyResults />
+                  <EmptyResults sizeNote={sizeNote} />
                 )}
               </CardContent>
             </Card>
