@@ -181,10 +181,13 @@ function TradePlanChecker() {
     const label = s.sizingMode === "quick"
       ? ASSET_TYPES.find((a) => a.value === s.assetType)!.unit
       : s.unitLabel?.trim() || "units";
-    const decimals = s.assetType === "forex" ? 2 : size >= 10 ? 2 : 4;
+    const decimalsByAsset: Record<AssetType, number> = {
+      forex: 2, gold: 2, indices: 2, crypto: 4, stocks: 2,
+    };
+    const decimals = decimalsByAsset[s.assetType] ?? 2;
     return `${size.toLocaleString(undefined, {
       maximumFractionDigits: decimals,
-      minimumFractionDigits: s.assetType === "forex" ? 2 : 0,
+      minimumFractionDigits: decimals,
     })} ${label}`;
   };
 
@@ -200,6 +203,23 @@ function TradePlanChecker() {
   const moveTargetText = result.ready && result.moveToTargetPct !== null ? `${result.moveToTargetPct.toFixed(2)}%` : dash;
   const riskText = result.ready ? moneyOrDash(result.dollarRisk) : dash;
   const rewardText = result.ready ? moneyOrDash(result.reward) : dash;
+
+  // Size validation messages
+  const entryN = num(s.entry);
+  const stopN = num(s.stop);
+  const pipN = num(s.pipValue);
+  const stopDistValid = entryN !== null && stopN !== null && Math.abs(entryN - stopN) > 0;
+  const pipValid = pipN !== null && pipN > 0;
+  const sizeNote = !stopDistValid
+    ? "Enter a valid stop loss to calculate size."
+    : !pipValid
+      ? "Enter a valid pip/point value."
+      : null;
+
+  const riskConfirmText =
+    result.ready && result.suggestedSize !== null && result.dollarRisk !== null
+      ? `At this size, max account risk = ${num(s.riskPct)}% / ${fmtMoney(result.dollarRisk)}`
+      : null;
 
   const handleSave = () => {
     if (!result.ready) return;
@@ -285,22 +305,30 @@ function TradePlanChecker() {
               {/* 2. Position Sizing */}
               <Section title="2. Position sizing" icon={<Package className="h-3.5 w-3.5" />}>
                 <div className="mb-3 inline-flex rounded-md border border-border/60 bg-secondary/30 p-0.5">
-                  {(["quick", "advanced"] as SizingMode[]).map((m) => (
+                  {([
+                    { key: "quick" as SizingMode, label: "Auto Size" },
+                    { key: "advanced" as SizingMode, label: "Advanced" },
+                  ]).map((m) => (
                     <button
-                      key={m}
+                      key={m.key}
                       type="button"
-                      onClick={() => set("sizingMode", m)}
+                      onClick={() => set("sizingMode", m.key)}
                       className={cn(
-                        "rounded px-3 py-1 text-xs font-medium capitalize transition-colors",
-                        s.sizingMode === m
+                        "rounded px-3 py-1 text-xs font-medium transition-colors",
+                        s.sizingMode === m.key
                           ? "bg-primary text-primary-foreground shadow"
                           : "text-muted-foreground hover:text-foreground"
                       )}
                     >
-                      {m}
+                      {m.label}
                     </button>
                   ))}
                 </div>
+                <p className="mb-3 text-[11px] leading-relaxed text-muted-foreground">
+                  {s.sizingMode === "quick"
+                    ? "PipGrade automatically calculates the recommended execution size based on your account risk and stop distance."
+                    : "Use Advanced mode if your broker uses different pip, point, contract, or lot values."}
+                </p>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="Asset type">
                     <Select value={s.assetType} onValueChange={(v) => set("assetType", v as AssetType)}>
@@ -335,6 +363,7 @@ function TradePlanChecker() {
                   )}
                 </p>
               </Section>
+
 
               {/* 3. Trade Levels */}
               <Section title="3. Trade levels" icon={<Activity className="h-3.5 w-3.5" />}>
@@ -395,6 +424,8 @@ function TradePlanChecker() {
                     moveToStopText={moveStopText}
                     moveToTargetText={moveTargetText}
                     sizeText={sizeText}
+                    sizeNote={sizeNote}
+                    riskConfirmText={riskConfirmText}
                     onSave={handleSave}
                   />
                 ) : (
@@ -536,11 +567,12 @@ function gradeColor(grade: Grade) {
 
 function ResultsView({
   asset, direction, riskText, rewardText, rrText, grade, verdict,
-  coaching, warnings, moveToStopText, moveToTargetText, sizeText, onSave,
+  coaching, warnings, moveToStopText, moveToTargetText, sizeText, sizeNote, riskConfirmText, onSave,
 }: {
   asset: string; direction: Direction; riskText: string; rewardText: string; rrText: string;
   grade: Grade; verdict: Verdict; coaching: string; warnings: string[];
-  moveToStopText: string; moveToTargetText: string; sizeText: string; onSave: () => void;
+  moveToStopText: string; moveToTargetText: string; sizeText: string;
+  sizeNote: string | null; riskConfirmText: string | null; onSave: () => void;
 }) {
   return (
     <div className="space-y-5">
@@ -563,15 +595,30 @@ function ResultsView({
         </div>
       </div>
 
+      {/* Prominent Suggested Size */}
+      <div className="rounded-xl border border-primary/30 bg-gradient-to-br from-primary/15 via-primary/5 to-transparent p-4 shadow-[0_0_28px_-12px_var(--primary)]">
+        <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-primary/90">
+          <Package className="h-3.5 w-3.5" /> Suggested size
+        </div>
+        <div key={sizeText} className="animate-in fade-in slide-in-from-bottom-1 duration-200 mt-1 font-mono text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+          {sizeText}
+        </div>
+        {sizeNote ? (
+          <p className="mt-1.5 text-xs text-warning">{sizeNote}</p>
+        ) : riskConfirmText ? (
+          <p className="mt-1.5 text-xs text-muted-foreground">{riskConfirmText}</p>
+        ) : null}
+      </div>
+
       {/* Stats */}
       <div className="grid grid-cols-2 gap-2">
         <Stat icon={<AlertTriangle className="h-3.5 w-3.5" />} label="Risk" value={riskText} tone="danger" />
         <Stat icon={<span className="text-sm leading-none">💰</span>} label="Reward" value={rewardText} tone="success" />
         <Stat icon={<Scale className="h-3.5 w-3.5" />} label="R : R" value={rrText} tone="neutral" />
-        <Stat icon={<Package className="h-3.5 w-3.5" />} label="Suggested size" value={sizeText} tone="neutral" />
         <Stat label="Move to stop" value={moveToStopText} tone="neutral" />
         <Stat label="Move to target" value={moveToTargetText} tone="neutral" />
       </div>
+
 
       {/* Coaching */}
       <div className="rounded-lg border border-border/60 bg-secondary/30 p-3">
