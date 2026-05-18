@@ -305,22 +305,30 @@ function TradePlanChecker() {
               {/* 2. Position Sizing */}
               <Section title="2. Position sizing" icon={<Package className="h-3.5 w-3.5" />}>
                 <div className="mb-3 inline-flex rounded-md border border-border/60 bg-secondary/30 p-0.5">
-                  {(["quick", "advanced"] as SizingMode[]).map((m) => (
+                  {([
+                    { key: "quick" as SizingMode, label: "Auto Size" },
+                    { key: "advanced" as SizingMode, label: "Advanced" },
+                  ]).map((m) => (
                     <button
-                      key={m}
+                      key={m.key}
                       type="button"
-                      onClick={() => set("sizingMode", m)}
+                      onClick={() => set("sizingMode", m.key)}
                       className={cn(
-                        "rounded px-3 py-1 text-xs font-medium capitalize transition-colors",
-                        s.sizingMode === m
+                        "rounded px-3 py-1 text-xs font-medium transition-colors",
+                        s.sizingMode === m.key
                           ? "bg-primary text-primary-foreground shadow"
                           : "text-muted-foreground hover:text-foreground"
                       )}
                     >
-                      {m}
+                      {m.label}
                     </button>
                   ))}
                 </div>
+                <p className="mb-3 text-[11px] leading-relaxed text-muted-foreground">
+                  {s.sizingMode === "quick"
+                    ? "PipGrade automatically calculates the recommended execution size based on your account risk and stop distance."
+                    : "Use Advanced mode if your broker uses different pip, point, contract, or lot values."}
+                </p>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="Asset type">
                     <Select value={s.assetType} onValueChange={(v) => set("assetType", v as AssetType)}>
@@ -355,6 +363,7 @@ function TradePlanChecker() {
                   )}
                 </p>
               </Section>
+
 
               {/* 3. Trade Levels */}
               <Section title="3. Trade levels" icon={<Activity className="h-3.5 w-3.5" />}>
