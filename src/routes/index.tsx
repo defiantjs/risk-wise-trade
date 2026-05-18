@@ -107,28 +107,47 @@ function TradePlanChecker() {
     const tp = num(s.tp);
     const pipValue = num(s.pipValue);
 
-    const ready =
+    const sizingReady =
       balance !== null && balance > 0 &&
       riskPct !== null && riskPct > 0 &&
       entry !== null && entry > 0 &&
       stop !== null && stop > 0 &&
-      tp !== null && tp > 0 &&
       pipValue !== null && pipValue > 0 &&
       Math.abs(entry - stop) > 0;
 
-    if (!ready) return { ready: false as const };
+    const ready = sizingReady && tp !== null && tp > 0;
+
+    if (!sizingReady) {
+      const partialDollarRisk =
+        balance !== null && balance > 0 && riskPct !== null && riskPct > 0
+          ? safe((balance * riskPct) / 100)
+          : null;
+      return { ready: false as const, sizingReady: false as const, dollarRisk: partialDollarRisk, suggestedSize: null };
+    }
 
     const stopDist = Math.abs(entry! - stop!);
-    const targetDist = Math.abs(tp! - entry!);
+    const targetDist = tp !== null && tp > 0 ? Math.abs(tp - entry!) : null;
     const dollarRisk = safe((balance! * riskPct!) / 100);
-    const rr = stopDist > 0 ? safe(targetDist / stopDist) : null;
+    const rr = targetDist !== null && stopDist > 0 ? safe(targetDist / stopDist) : null;
     const reward = dollarRisk !== null && rr !== null ? safe(dollarRisk * rr) : null;
     const moveToStopPct = entry! > 0 ? safe((stopDist / entry!) * 100) : null;
-    const moveToTargetPct = entry! > 0 ? safe((targetDist / entry!) * 100) : null;
+    const moveToTargetPct = entry! > 0 && targetDist !== null ? safe((targetDist / entry!) * 100) : null;
     const suggestedSize =
       pipValue !== null && pipValue > 0 && stopDist > 0 && dollarRisk !== null
         ? safe(dollarRisk / (stopDist * pipValue))
         : null;
+
+    if (!ready) {
+      return {
+        ready: false as const,
+        sizingReady: true as const,
+        dollarRisk,
+        suggestedSize,
+        moveToStopPct,
+        assetType: s.assetType,
+        unitLabel: s.unitLabel,
+      };
+    }
 
     const directionMismatch =
       (s.direction === "buy" && (stop! >= entry! || tp! <= entry!)) ||
@@ -191,9 +210,14 @@ function TradePlanChecker() {
     })} ${label}`;
   };
 
+  const suggestedSizeVal =
+    "suggestedSize" in result ? result.suggestedSize : null;
+  const dollarRiskVal =
+    "dollarRisk" in result ? result.dollarRisk : null;
+
   const sizeText =
-    result.ready && result.suggestedSize !== null && Number.isFinite(result.suggestedSize)
-      ? formatSize(result.suggestedSize)
+    suggestedSizeVal !== null && Number.isFinite(suggestedSizeVal)
+      ? formatSize(suggestedSizeVal)
       : "—";
 
   const dash = "—";
@@ -201,7 +225,7 @@ function TradePlanChecker() {
   const rrText = result.ready && result.rr !== null ? `${result.rr.toFixed(2)} : 1` : dash;
   const moveStopText = result.ready && result.moveToStopPct !== null ? `${result.moveToStopPct.toFixed(2)}%` : dash;
   const moveTargetText = result.ready && result.moveToTargetPct !== null ? `${result.moveToTargetPct.toFixed(2)}%` : dash;
-  const riskText = result.ready ? moneyOrDash(result.dollarRisk) : dash;
+  const riskText = dollarRiskVal !== null ? moneyOrDash(dollarRiskVal) : dash;
   const rewardText = result.ready ? moneyOrDash(result.reward) : dash;
 
   // Size validation messages
@@ -217,8 +241,8 @@ function TradePlanChecker() {
       : null;
 
   const riskConfirmText =
-    result.ready && result.suggestedSize !== null && result.dollarRisk !== null
-      ? `At this size, max account risk = ${num(s.riskPct)}% / ${fmtMoney(result.dollarRisk)}`
+    suggestedSizeVal !== null && dollarRiskVal !== null
+      ? `At this size, max account risk = ${num(s.riskPct)}% / ${fmtMoney(dollarRiskVal)}`
       : null;
 
   const handleSave = () => {
@@ -428,8 +452,10 @@ function TradePlanChecker() {
                     riskConfirmText={riskConfirmText}
                     onSave={handleSave}
                   />
+                ) : result.sizingReady ? (
+                  <PartialResults sizeText={sizeText} sizeNote={sizeNote} riskConfirmText={riskConfirmText} />
                 ) : (
-                  <EmptyResults />
+                  <EmptyResults sizeNote={sizeNote} />
                 )}
               </CardContent>
             </Card>
@@ -515,13 +541,42 @@ function DirectionButton({ active, tone, children, onClick }: {
   );
 }
 
-function EmptyResults() {
+function EmptyResults({ sizeNote }: { sizeNote: string | null }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted/60">
         <Info className="h-5 w-5 text-muted-foreground" />
       </div>
-      <p className="text-sm text-muted-foreground">Enter trade levels to validate your setup.</p>
+      <p className="text-sm text-muted-foreground">
+        {sizeNote ?? "Enter balance, risk %, entry, and stop loss to see your suggested size."}
+      </p>
+      <p className="text-xs text-muted-foreground/70">Add a take profit to grade the full setup.</p>
+    </div>
+  );
+}
+
+function PartialResults({
+  sizeText, sizeNote, riskConfirmText,
+}: { sizeText: string; sizeNote: string | null; riskConfirmText: string | null }) {
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-primary/30 bg-gradient-to-br from-primary/15 via-primary/5 to-transparent p-4 shadow-[0_0_28px_-12px_var(--primary)]">
+        <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-primary/90">
+          <Package className="h-3.5 w-3.5" /> Suggested size
+        </div>
+        <div key={sizeText} className="animate-in fade-in slide-in-from-bottom-1 duration-200 mt-1 font-mono text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+          {sizeText}
+        </div>
+        {sizeNote ? (
+          <p className="mt-1.5 text-xs text-warning">{sizeNote}</p>
+        ) : riskConfirmText ? (
+          <p className="mt-1.5 text-xs text-muted-foreground">{riskConfirmText}</p>
+        ) : null}
+      </div>
+      <div className="rounded-lg border border-border/60 bg-secondary/30 p-3 text-xs text-muted-foreground">
+        <Info className="mr-1.5 inline h-3.5 w-3.5 align-[-2px] text-muted-foreground" />
+        Add a take profit to see R:R, reward, verdict, and grade.
+      </div>
     </div>
   );
 }
