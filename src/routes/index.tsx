@@ -424,6 +424,8 @@ function TradePlanChecker() {
                     moveToStopText={moveStopText}
                     moveToTargetText={moveTargetText}
                     sizeText={sizeText}
+                    sizeNote={sizeNote}
+                    riskConfirmText={riskConfirmText}
                     onSave={handleSave}
                   />
                 ) : (
