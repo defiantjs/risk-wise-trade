@@ -181,10 +181,13 @@ function TradePlanChecker() {
     const label = s.sizingMode === "quick"
       ? ASSET_TYPES.find((a) => a.value === s.assetType)!.unit
       : s.unitLabel?.trim() || "units";
-    const decimals = s.assetType === "forex" ? 2 : size >= 10 ? 2 : 4;
+    const decimalsByAsset: Record<AssetType, number> = {
+      forex: 2, gold: 2, indices: 2, crypto: 4, stocks: 2,
+    };
+    const decimals = decimalsByAsset[s.assetType] ?? 2;
     return `${size.toLocaleString(undefined, {
       maximumFractionDigits: decimals,
-      minimumFractionDigits: s.assetType === "forex" ? 2 : 0,
+      minimumFractionDigits: decimals,
     })} ${label}`;
   };
 
@@ -200,6 +203,23 @@ function TradePlanChecker() {
   const moveTargetText = result.ready && result.moveToTargetPct !== null ? `${result.moveToTargetPct.toFixed(2)}%` : dash;
   const riskText = result.ready ? moneyOrDash(result.dollarRisk) : dash;
   const rewardText = result.ready ? moneyOrDash(result.reward) : dash;
+
+  // Size validation messages
+  const entryN = num(s.entry);
+  const stopN = num(s.stop);
+  const pipN = num(s.pipValue);
+  const stopDistValid = entryN !== null && stopN !== null && Math.abs(entryN - stopN) > 0;
+  const pipValid = pipN !== null && pipN > 0;
+  const sizeNote = !stopDistValid
+    ? "Enter a valid stop loss to calculate size."
+    : !pipValid
+      ? "Enter a valid pip/point value."
+      : null;
+
+  const riskConfirmText =
+    result.ready && result.suggestedSize !== null && result.dollarRisk !== null
+      ? `At this size, max account risk = ${num(s.riskPct)}% / ${fmtMoney(result.dollarRisk)}`
+      : null;
 
   const handleSave = () => {
     if (!result.ready) return;
