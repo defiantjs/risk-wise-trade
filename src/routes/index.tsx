@@ -567,11 +567,12 @@ function gradeColor(grade: Grade) {
 
 function ResultsView({
   asset, direction, riskText, rewardText, rrText, grade, verdict,
-  coaching, warnings, moveToStopText, moveToTargetText, sizeText, onSave,
+  coaching, warnings, moveToStopText, moveToTargetText, sizeText, sizeNote, riskConfirmText, onSave,
 }: {
   asset: string; direction: Direction; riskText: string; rewardText: string; rrText: string;
   grade: Grade; verdict: Verdict; coaching: string; warnings: string[];
-  moveToStopText: string; moveToTargetText: string; sizeText: string; onSave: () => void;
+  moveToStopText: string; moveToTargetText: string; sizeText: string;
+  sizeNote: string | null; riskConfirmText: string | null; onSave: () => void;
 }) {
   return (
     <div className="space-y-5">
@@ -594,15 +595,30 @@ function ResultsView({
         </div>
       </div>
 
+      {/* Prominent Suggested Size */}
+      <div className="rounded-xl border border-primary/30 bg-gradient-to-br from-primary/15 via-primary/5 to-transparent p-4 shadow-[0_0_28px_-12px_var(--primary)]">
+        <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-primary/90">
+          <Package className="h-3.5 w-3.5" /> Suggested size
+        </div>
+        <div key={sizeText} className="animate-in fade-in slide-in-from-bottom-1 duration-200 mt-1 font-mono text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+          {sizeText}
+        </div>
+        {sizeNote ? (
+          <p className="mt-1.5 text-xs text-warning">{sizeNote}</p>
+        ) : riskConfirmText ? (
+          <p className="mt-1.5 text-xs text-muted-foreground">{riskConfirmText}</p>
+        ) : null}
+      </div>
+
       {/* Stats */}
       <div className="grid grid-cols-2 gap-2">
         <Stat icon={<AlertTriangle className="h-3.5 w-3.5" />} label="Risk" value={riskText} tone="danger" />
         <Stat icon={<span className="text-sm leading-none">💰</span>} label="Reward" value={rewardText} tone="success" />
         <Stat icon={<Scale className="h-3.5 w-3.5" />} label="R : R" value={rrText} tone="neutral" />
-        <Stat icon={<Package className="h-3.5 w-3.5" />} label="Suggested size" value={sizeText} tone="neutral" />
         <Stat label="Move to stop" value={moveToStopText} tone="neutral" />
         <Stat label="Move to target" value={moveToTargetText} tone="neutral" />
       </div>
+
 
       {/* Coaching */}
       <div className="rounded-lg border border-border/60 bg-secondary/30 p-3">
