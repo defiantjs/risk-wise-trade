@@ -210,9 +210,14 @@ function TradePlanChecker() {
     })} ${label}`;
   };
 
+  const suggestedSizeVal =
+    "suggestedSize" in result ? result.suggestedSize : null;
+  const dollarRiskVal =
+    "dollarRisk" in result ? result.dollarRisk : null;
+
   const sizeText =
-    result.ready && result.suggestedSize !== null && Number.isFinite(result.suggestedSize)
-      ? formatSize(result.suggestedSize)
+    suggestedSizeVal !== null && Number.isFinite(suggestedSizeVal)
+      ? formatSize(suggestedSizeVal)
       : "—";
 
   const dash = "—";
