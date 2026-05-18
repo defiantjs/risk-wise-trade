@@ -107,28 +107,47 @@ function TradePlanChecker() {
     const tp = num(s.tp);
     const pipValue = num(s.pipValue);
 
-    const ready =
+    const sizingReady =
       balance !== null && balance > 0 &&
       riskPct !== null && riskPct > 0 &&
       entry !== null && entry > 0 &&
       stop !== null && stop > 0 &&
-      tp !== null && tp > 0 &&
       pipValue !== null && pipValue > 0 &&
       Math.abs(entry - stop) > 0;
 
-    if (!ready) return { ready: false as const };
+    const ready = sizingReady && tp !== null && tp > 0;
+
+    if (!sizingReady) {
+      const partialDollarRisk =
+        balance !== null && balance > 0 && riskPct !== null && riskPct > 0
+          ? safe((balance * riskPct) / 100)
+          : null;
+      return { ready: false as const, sizingReady: false as const, dollarRisk: partialDollarRisk, suggestedSize: null };
+    }
 
     const stopDist = Math.abs(entry! - stop!);
-    const targetDist = Math.abs(tp! - entry!);
+    const targetDist = tp !== null && tp > 0 ? Math.abs(tp - entry!) : null;
     const dollarRisk = safe((balance! * riskPct!) / 100);
-    const rr = stopDist > 0 ? safe(targetDist / stopDist) : null;
+    const rr = targetDist !== null && stopDist > 0 ? safe(targetDist / stopDist) : null;
     const reward = dollarRisk !== null && rr !== null ? safe(dollarRisk * rr) : null;
     const moveToStopPct = entry! > 0 ? safe((stopDist / entry!) * 100) : null;
-    const moveToTargetPct = entry! > 0 ? safe((targetDist / entry!) * 100) : null;
+    const moveToTargetPct = entry! > 0 && targetDist !== null ? safe((targetDist / entry!) * 100) : null;
     const suggestedSize =
       pipValue !== null && pipValue > 0 && stopDist > 0 && dollarRisk !== null
         ? safe(dollarRisk / (stopDist * pipValue))
         : null;
+
+    if (!ready) {
+      return {
+        ready: false as const,
+        sizingReady: true as const,
+        dollarRisk,
+        suggestedSize,
+        moveToStopPct,
+        assetType: s.assetType,
+        unitLabel: s.unitLabel,
+      };
+    }
 
     const directionMismatch =
       (s.direction === "buy" && (stop! >= entry! || tp! <= entry!)) ||
