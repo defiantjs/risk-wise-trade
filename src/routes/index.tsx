@@ -498,9 +498,9 @@ function TradePlanChecker() {
                     onSave={handleSave}
                   />
                 ) : result.sizingReady ? (
-                  <PartialResults sizeText={sizeText} sizeNote={sizeNote} riskConfirmText={riskConfirmText} />
+                  <PartialResults sizeText={sizeText} sizeNote={sizeNote} riskConfirmText={riskConfirmText} checks={checks} />
                 ) : (
-                  <EmptyResults sizeNote={sizeNote} />
+                  <EmptyResults sizeNote={sizeNote} checks={checks} />
                 )}
               </CardContent>
             </Card>
