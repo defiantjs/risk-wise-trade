@@ -586,25 +586,59 @@ function DirectionButton({ active, tone, children, onClick }: {
   );
 }
 
-function EmptyResults({ sizeNote }: { sizeNote: string | null }) {
+type Check = { label: string; ok: boolean; msg?: string };
+
+function ValidationChecklist({ checks }: { checks: Check[] }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
-      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted/60">
-        <Info className="h-5 w-5 text-muted-foreground" />
+    <div className="rounded-lg border border-border/60 bg-secondary/30 p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-foreground/70">Sizing inputs</div>
+        <div className="text-[10px] text-muted-foreground">
+          {checks.filter((c) => c.ok).length}/{checks.length} ready
+        </div>
       </div>
-      <p className="text-sm text-muted-foreground">
-        {sizeNote ?? "Enter balance, risk %, entry, and stop loss to see your suggested size."}
-      </p>
-      <p className="text-xs text-muted-foreground/70">Add a take profit to grade the full setup.</p>
+      <ul className="space-y-1.5">
+        {checks.map((c) => (
+          <li key={c.label} className="flex items-center justify-between gap-2 text-xs">
+            <span className="flex items-center gap-2">
+              {c.ok ? (
+                <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0 text-success" />
+              ) : (
+                <XCircle className="h-3.5 w-3.5 flex-shrink-0 text-danger" />
+              )}
+              <span className={c.ok ? "text-foreground/80" : "text-foreground"}>{c.label}</span>
+            </span>
+            {!c.ok && c.msg && <span className="text-[10px] text-danger">{c.msg}</span>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function EmptyResults({ sizeNote, checks }: { sizeNote: string | null; checks: Check[] }) {
+  return (
+    <div className="space-y-4 py-2">
+      <div className="flex flex-col items-center gap-2 text-center">
+        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-muted/60">
+          <Info className="h-5 w-5 text-muted-foreground" />
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {sizeNote ?? "Fill in the inputs below to see your suggested execution size."}
+        </p>
+      </div>
+      <ValidationChecklist checks={checks} />
+      <p className="text-center text-[11px] text-muted-foreground/70">Add a take profit to grade the full setup.</p>
     </div>
   );
 }
 
 function PartialResults({
-  sizeText, sizeNote, riskConfirmText,
-}: { sizeText: string; sizeNote: string | null; riskConfirmText: string | null }) {
+  sizeText, sizeNote, riskConfirmText, checks,
+}: { sizeText: string; sizeNote: string | null; riskConfirmText: string | null; checks: Check[] }) {
   return (
     <div className="space-y-4">
+      <ValidationChecklist checks={checks} />
       <div className="rounded-xl border border-primary/30 bg-gradient-to-br from-primary/15 via-primary/5 to-transparent p-4 shadow-[0_0_28px_-12px_var(--primary)]">
         <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-primary/90">
           <Package className="h-3.5 w-3.5" /> Suggested size
