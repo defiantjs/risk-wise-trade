@@ -843,3 +843,216 @@ function MiniItem({ label, value, valueClass }: { label: string; value: string; 
     </div>
   );
 }
+
+/* ---------- Trade Card Image Export ---------- */
+
+type TradeCardData = {
+  asset: string;
+  direction: Direction;
+  grade: Grade;
+  verdict: Verdict;
+  entry: string;
+  stop: string;
+  tp: string;
+  balanceText: string;
+  riskPctText: string;
+  riskText: string;
+  rewardText: string;
+  rrText: string;
+  sizeText: string;
+  moveStopText: string;
+  moveTargetText: string;
+};
+
+function downloadTradeCard(d: TradeCardData) {
+  const W = 1080;
+  const H = 1350;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  // Background
+  const bg = ctx.createLinearGradient(0, 0, W, H);
+  bg.addColorStop(0, "#0a0d14");
+  bg.addColorStop(1, "#10141c");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Subtle radial glow
+  const glow = ctx.createRadialGradient(W / 2, 200, 50, W / 2, 200, 700);
+  glow.addColorStop(0, "rgba(99,102,241,0.18)");
+  glow.addColorStop(1, "rgba(99,102,241,0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+
+  // Card frame
+  const pad = 60;
+  roundRect(ctx, pad, pad, W - pad * 2, H - pad * 2, 32);
+  ctx.fillStyle = "rgba(20,24,33,0.7)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.08)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Header — PipGrade brand
+  ctx.fillStyle = "#a5b4fc";
+  ctx.font = "600 28px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto";
+  ctx.textBaseline = "top";
+  ctx.fillText("⬢ PIPGRADE", pad + 40, pad + 40);
+
+  ctx.fillStyle = "rgba(255,255,255,0.5)";
+  ctx.font = "400 18px ui-sans-serif, system-ui";
+  ctx.fillText("Pre-trade validation card", pad + 40, pad + 78);
+
+  // Date right
+  const date = new Date().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  ctx.fillStyle = "rgba(255,255,255,0.4)";
+  ctx.font = "400 16px ui-sans-serif, system-ui";
+  ctx.textAlign = "right";
+  ctx.fillText(date, W - pad - 40, pad + 50);
+  ctx.textAlign = "left";
+
+  // Asset + direction
+  let y = pad + 150;
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "800 64px ui-sans-serif, system-ui";
+  ctx.fillText(d.asset.toUpperCase(), pad + 40, y);
+
+  const dirColor = d.direction === "buy" ? "#22c55e" : "#ef4444";
+  const dirLabel = d.direction === "buy" ? "LONG" : "SHORT";
+  ctx.font = "700 22px ui-sans-serif, system-ui";
+  const assetWidth = ctx.measureText(d.asset.toUpperCase()).width;
+  // pill
+  const pillX = pad + 40 + assetWidth + 24;
+  const pillY = y + 18;
+  const pillW = 110;
+  const pillH = 38;
+  roundRect(ctx, pillX, pillY, pillW, pillH, 19);
+  ctx.fillStyle = `${dirColor}33`;
+  ctx.fill();
+  ctx.strokeStyle = `${dirColor}80`;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = dirColor;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(dirLabel, pillX + pillW / 2, pillY + pillH / 2 + 1);
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+
+  // Verdict banner
+  y += 110;
+  const verdictMap: Record<Verdict, { label: string; color: string }> = {
+    valid: { label: "✓  VALID SETUP", color: "#22c55e" },
+    adjust: { label: "⚠  ADJUST BEFORE ENTRY", color: "#f59e0b" },
+    no: { label: "✕  DO NOT TAKE THIS TRADE", color: "#ef4444" },
+  };
+  const v = verdictMap[d.verdict];
+  roundRect(ctx, pad + 40, y, W - pad * 2 - 80, 90, 16);
+  ctx.fillStyle = `${v.color}22`;
+  ctx.fill();
+  ctx.strokeStyle = `${v.color}66`;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = v.color;
+  ctx.font = "800 32px ui-sans-serif, system-ui";
+  ctx.textBaseline = "middle";
+  ctx.fillText(v.label, pad + 70, y + 45);
+  // grade right
+  ctx.font = "800 40px ui-monospace, Menlo, monospace";
+  ctx.textAlign = "right";
+  ctx.fillText(d.grade, W - pad - 70, y + 45);
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+
+  // Suggested size block
+  y += 130;
+  roundRect(ctx, pad + 40, y, W - pad * 2 - 80, 130, 18);
+  const sizeGrad = ctx.createLinearGradient(0, y, W, y + 130);
+  sizeGrad.addColorStop(0, "rgba(99,102,241,0.25)");
+  sizeGrad.addColorStop(1, "rgba(99,102,241,0.05)");
+  ctx.fillStyle = sizeGrad;
+  ctx.fill();
+  ctx.strokeStyle = "rgba(165,180,252,0.4)";
+  ctx.stroke();
+  ctx.fillStyle = "#a5b4fc";
+  ctx.font = "600 16px ui-sans-serif, system-ui";
+  ctx.fillText("SUGGESTED EXECUTION SIZE", pad + 70, y + 22);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "800 56px ui-monospace, Menlo, monospace";
+  ctx.fillText(d.sizeText, pad + 70, y + 50);
+
+  // Stats grid
+  y += 170;
+  const stats: { label: string; value: string; color?: string }[] = [
+    { label: "ENTRY", value: d.entry },
+    { label: "STOP LOSS", value: d.stop, color: "#ef4444" },
+    { label: "TAKE PROFIT", value: d.tp, color: "#22c55e" },
+    { label: "DOLLAR RISK", value: d.riskText, color: "#ef4444" },
+    { label: "ESTIMATED REWARD", value: d.rewardText, color: "#22c55e" },
+    { label: "RISK : REWARD", value: d.rrText },
+    { label: "MOVE TO STOP", value: d.moveStopText },
+    { label: "MOVE TO TARGET", value: d.moveTargetText },
+  ];
+
+  const cols = 2;
+  const cellW = (W - pad * 2 - 80 - 20) / cols;
+  const cellH = 100;
+  stats.forEach((stat, i) => {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const cx = pad + 40 + col * (cellW + 20);
+    const cy = y + row * (cellH + 14);
+    roundRect(ctx, cx, cy, cellW, cellH, 14);
+    ctx.fillStyle = "rgba(255,255,255,0.04)";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.08)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,0.5)";
+    ctx.font = "600 13px ui-sans-serif, system-ui";
+    ctx.fillText(stat.label, cx + 20, cy + 20);
+    ctx.fillStyle = stat.color ?? "#ffffff";
+    ctx.font = "700 26px ui-monospace, Menlo, monospace";
+    ctx.fillText(stat.value, cx + 20, cy + 48);
+  });
+
+  // Footer
+  const footerY = H - pad - 60;
+  ctx.fillStyle = "rgba(255,255,255,0.35)";
+  ctx.font = "400 16px ui-sans-serif, system-ui";
+  ctx.fillText(`Balance ${d.balanceText} · Risk ${d.riskPctText}`, pad + 40, footerY);
+  ctx.textAlign = "right";
+  ctx.fillStyle = "rgba(165,180,252,0.7)";
+  ctx.font = "600 16px ui-sans-serif, system-ui";
+  ctx.fillText("Validate risk. Grade setups. Execute with confidence.", W - pad - 40, footerY);
+  ctx.textAlign = "left";
+
+  canvas.toBlob((blob) => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `pipgrade-${(d.asset || "setup").toLowerCase().replace(/\s+/g, "-")}-${Date.now()}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, "image/png");
+}
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
