@@ -223,21 +223,80 @@ function TradePlanChecker() {
   const dash = "—";
   const moneyOrDash = (n: number | null) => (n === null ? dash : fmtMoney(n));
   const rrText = result.ready && result.rr !== null ? `${result.rr.toFixed(2)} : 1` : dash;
-  const moveStopText = result.ready && result.moveToStopPct !== null ? `${result.moveToStopPct.toFixed(2)}%` : dash;
-  const moveTargetText = result.ready && result.moveToTargetPct !== null ? `${result.moveToTargetPct.toFixed(2)}%` : dash;
+
+  // Pip / point distance — derived from asset type and pair name
+  const pipSize = (() => {
+    if (s.assetType === "forex") return /JPY/i.test(s.asset) ? 0.01 : 0.0001;
+    if (s.assetType === "gold") return 0.1;
+    if (s.assetType === "stocks") return 0.01;
+    return 1; // indices, crypto
+  })();
+  const distanceUnit = s.assetType === "forex" ? "pips" : "pts";
+
+  const entryN = num(s.entry);
+  const stopN = num(s.stop);
+  const tpN = num(s.tp);
+  const pipN = num(s.pipValue);
+  const balanceN = num(s.balance);
+  const riskPctN = num(s.riskPct);
+
+  const stopDistRaw = entryN !== null && stopN !== null ? Math.abs(entryN - stopN) : null;
+  const targetDistRaw = entryN !== null && tpN !== null ? Math.abs(tpN - entryN) : null;
+  const stopPips = stopDistRaw !== null ? stopDistRaw / pipSize : null;
+  const targetPips = targetDistRaw !== null ? targetDistRaw / pipSize : null;
+  const fmtPips = (n: number) =>
+    n.toLocaleString(undefined, { maximumFractionDigits: s.assetType === "forex" ? 1 : 2 });
+
+  const moveStopText =
+    result.ready && result.moveToStopPct !== null && stopPips !== null
+      ? `${fmtPips(stopPips)} ${distanceUnit} · ${result.moveToStopPct.toFixed(2)}%`
+      : dash;
+  const moveTargetText =
+    result.ready && result.moveToTargetPct !== null && targetPips !== null
+      ? `${fmtPips(targetPips)} ${distanceUnit} · ${result.moveToTargetPct.toFixed(2)}%`
+      : dash;
   const riskText = dollarRiskVal !== null ? moneyOrDash(dollarRiskVal) : dash;
   const rewardText = result.ready ? moneyOrDash(result.reward) : dash;
 
-  // Size validation messages
-  const entryN = num(s.entry);
-  const stopN = num(s.stop);
-  const pipN = num(s.pipValue);
-  const stopDistValid = entryN !== null && stopN !== null && Math.abs(entryN - stopN) > 0;
-  const pipValid = pipN !== null && pipN > 0;
-  const sizeNote = !stopDistValid
-    ? "Enter a valid stop loss to calculate size."
-    : !pipValid
-      ? "Enter a valid pip/point value."
+  // Per-field validation for sizing
+  const checks: { label: string; ok: boolean; msg?: string }[] = [
+    {
+      label: "Account balance",
+      ok: balanceN !== null && balanceN > 0,
+      msg: balanceN === null ? "Required" : balanceN <= 0 ? "Must be greater than 0" : undefined,
+    },
+    {
+      label: "Risk %",
+      ok: riskPctN !== null && riskPctN > 0 && riskPctN <= 100,
+      msg: riskPctN === null ? "Required" : riskPctN <= 0 ? "Must be greater than 0" : riskPctN > 100 ? "Max 100%" : undefined,
+    },
+    {
+      label: "Entry price",
+      ok: entryN !== null && entryN > 0,
+      msg: entryN === null ? "Required" : "Must be greater than 0",
+    },
+    {
+      label: "Stop loss",
+      ok: stopN !== null && stopN > 0 && entryN !== null && Math.abs(entryN - stopN) > 0,
+      msg:
+        stopN === null
+          ? "Required"
+          : stopN <= 0
+            ? "Must be greater than 0"
+            : entryN !== null && stopN === entryN
+              ? "Cannot equal entry"
+              : undefined,
+    },
+    {
+      label: s.sizingMode === "advanced" ? "Pip / point value" : "Pip value",
+      ok: pipN !== null && pipN > 0,
+      msg: pipN === null ? "Required" : "Must be greater than 0",
+    },
+  ];
+  const failingChecks = checks.filter((c) => !c.ok);
+  const sizeNote =
+    failingChecks.length > 0
+      ? `${failingChecks.length} input${failingChecks.length === 1 ? "" : "s"} need attention`
       : null;
 
   const riskConfirmText =
@@ -247,37 +306,23 @@ function TradePlanChecker() {
 
   const handleSave = () => {
     if (!result.ready) return;
-    const lines = [
-      "TRADE PLAN",
-      "==========",
-      `Asset: ${s.asset || "—"}`,
-      `Direction: ${s.direction.toUpperCase()}`,
-      `Entry: ${s.entry}   Stop: ${s.stop}   Target: ${s.tp}`,
-      "",
-      `Account Balance: ${fmtMoney(num(s.balance)!)}`,
-      `Risk %: ${s.riskPct}%`,
-      `Dollar Risk: ${riskText}`,
-      `Estimated Reward: ${rewardText}`,
-      `R:R: ${rrText}`,
-      `Move to Stop: ${moveStopText}`,
-      `Move to Target: ${moveTargetText}`,
-      `Suggested Size: ${sizeText}`,
-      "",
-      `Grade: ${result.grade} (${GRADE_LABEL[result.grade]})`,
-      `Verdict: ${verdictText(result.verdict)}`,
-      "",
-      `Generated: ${new Date().toLocaleString()}`,
-    ].join("\n");
-
-    const blob = new Blob([lines], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `trade-plan-${s.asset || "setup"}-${Date.now()}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    downloadTradeCard({
+      asset: s.asset || "UNNAMED",
+      direction: s.direction,
+      grade: result.grade,
+      verdict: result.verdict,
+      entry: s.entry,
+      stop: s.stop,
+      tp: s.tp,
+      balanceText: fmtMoney(balanceN!),
+      riskPctText: `${s.riskPct}%`,
+      riskText,
+      rewardText,
+      rrText,
+      sizeText,
+      moveStopText,
+      moveTargetText,
+    });
   };
 
   return (
@@ -453,9 +498,9 @@ function TradePlanChecker() {
                     onSave={handleSave}
                   />
                 ) : result.sizingReady ? (
-                  <PartialResults sizeText={sizeText} sizeNote={sizeNote} riskConfirmText={riskConfirmText} />
+                  <PartialResults sizeText={sizeText} sizeNote={sizeNote} riskConfirmText={riskConfirmText} checks={checks} />
                 ) : (
-                  <EmptyResults sizeNote={sizeNote} />
+                  <EmptyResults sizeNote={sizeNote} checks={checks} />
                 )}
               </CardContent>
             </Card>
@@ -541,25 +586,59 @@ function DirectionButton({ active, tone, children, onClick }: {
   );
 }
 
-function EmptyResults({ sizeNote }: { sizeNote: string | null }) {
+type Check = { label: string; ok: boolean; msg?: string };
+
+function ValidationChecklist({ checks }: { checks: Check[] }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
-      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted/60">
-        <Info className="h-5 w-5 text-muted-foreground" />
+    <div className="rounded-lg border border-border/60 bg-secondary/30 p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-foreground/70">Sizing inputs</div>
+        <div className="text-[10px] text-muted-foreground">
+          {checks.filter((c) => c.ok).length}/{checks.length} ready
+        </div>
       </div>
-      <p className="text-sm text-muted-foreground">
-        {sizeNote ?? "Enter balance, risk %, entry, and stop loss to see your suggested size."}
-      </p>
-      <p className="text-xs text-muted-foreground/70">Add a take profit to grade the full setup.</p>
+      <ul className="space-y-1.5">
+        {checks.map((c) => (
+          <li key={c.label} className="flex items-center justify-between gap-2 text-xs">
+            <span className="flex items-center gap-2">
+              {c.ok ? (
+                <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0 text-success" />
+              ) : (
+                <XCircle className="h-3.5 w-3.5 flex-shrink-0 text-danger" />
+              )}
+              <span className={c.ok ? "text-foreground/80" : "text-foreground"}>{c.label}</span>
+            </span>
+            {!c.ok && c.msg && <span className="text-[10px] text-danger">{c.msg}</span>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function EmptyResults({ sizeNote, checks }: { sizeNote: string | null; checks: Check[] }) {
+  return (
+    <div className="space-y-4 py-2">
+      <div className="flex flex-col items-center gap-2 text-center">
+        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-muted/60">
+          <Info className="h-5 w-5 text-muted-foreground" />
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {sizeNote ?? "Fill in the inputs below to see your suggested execution size."}
+        </p>
+      </div>
+      <ValidationChecklist checks={checks} />
+      <p className="text-center text-[11px] text-muted-foreground/70">Add a take profit to grade the full setup.</p>
     </div>
   );
 }
 
 function PartialResults({
-  sizeText, sizeNote, riskConfirmText,
-}: { sizeText: string; sizeNote: string | null; riskConfirmText: string | null }) {
+  sizeText, sizeNote, riskConfirmText, checks,
+}: { sizeText: string; sizeNote: string | null; riskConfirmText: string | null; checks: Check[] }) {
   return (
     <div className="space-y-4">
+      <ValidationChecklist checks={checks} />
       <div className="rounded-xl border border-primary/30 bg-gradient-to-br from-primary/15 via-primary/5 to-transparent p-4 shadow-[0_0_28px_-12px_var(--primary)]">
         <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-primary/90">
           <Package className="h-3.5 w-3.5" /> Suggested size
@@ -763,4 +842,217 @@ function MiniItem({ label, value, valueClass }: { label: string; value: string; 
       <span className={cn("truncate font-mono font-semibold", valueClass)}>{value}</span>
     </div>
   );
+}
+
+/* ---------- Trade Card Image Export ---------- */
+
+type TradeCardData = {
+  asset: string;
+  direction: Direction;
+  grade: Grade;
+  verdict: Verdict;
+  entry: string;
+  stop: string;
+  tp: string;
+  balanceText: string;
+  riskPctText: string;
+  riskText: string;
+  rewardText: string;
+  rrText: string;
+  sizeText: string;
+  moveStopText: string;
+  moveTargetText: string;
+};
+
+function downloadTradeCard(d: TradeCardData) {
+  const W = 1080;
+  const H = 1350;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  // Background
+  const bg = ctx.createLinearGradient(0, 0, W, H);
+  bg.addColorStop(0, "#0a0d14");
+  bg.addColorStop(1, "#10141c");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Subtle radial glow
+  const glow = ctx.createRadialGradient(W / 2, 200, 50, W / 2, 200, 700);
+  glow.addColorStop(0, "rgba(99,102,241,0.18)");
+  glow.addColorStop(1, "rgba(99,102,241,0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+
+  // Card frame
+  const pad = 60;
+  roundRect(ctx, pad, pad, W - pad * 2, H - pad * 2, 32);
+  ctx.fillStyle = "rgba(20,24,33,0.7)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.08)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Header — PipGrade brand
+  ctx.fillStyle = "#a5b4fc";
+  ctx.font = "600 28px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto";
+  ctx.textBaseline = "top";
+  ctx.fillText("⬢ PIPGRADE", pad + 40, pad + 40);
+
+  ctx.fillStyle = "rgba(255,255,255,0.5)";
+  ctx.font = "400 18px ui-sans-serif, system-ui";
+  ctx.fillText("Pre-trade validation card", pad + 40, pad + 78);
+
+  // Date right
+  const date = new Date().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  ctx.fillStyle = "rgba(255,255,255,0.4)";
+  ctx.font = "400 16px ui-sans-serif, system-ui";
+  ctx.textAlign = "right";
+  ctx.fillText(date, W - pad - 40, pad + 50);
+  ctx.textAlign = "left";
+
+  // Asset + direction
+  let y = pad + 150;
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "800 64px ui-sans-serif, system-ui";
+  ctx.fillText(d.asset.toUpperCase(), pad + 40, y);
+
+  const dirColor = d.direction === "buy" ? "#22c55e" : "#ef4444";
+  const dirLabel = d.direction === "buy" ? "LONG" : "SHORT";
+  ctx.font = "700 22px ui-sans-serif, system-ui";
+  const assetWidth = ctx.measureText(d.asset.toUpperCase()).width;
+  // pill
+  const pillX = pad + 40 + assetWidth + 24;
+  const pillY = y + 18;
+  const pillW = 110;
+  const pillH = 38;
+  roundRect(ctx, pillX, pillY, pillW, pillH, 19);
+  ctx.fillStyle = `${dirColor}33`;
+  ctx.fill();
+  ctx.strokeStyle = `${dirColor}80`;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = dirColor;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(dirLabel, pillX + pillW / 2, pillY + pillH / 2 + 1);
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+
+  // Verdict banner
+  y += 110;
+  const verdictMap: Record<Verdict, { label: string; color: string }> = {
+    valid: { label: "✓  VALID SETUP", color: "#22c55e" },
+    adjust: { label: "⚠  ADJUST BEFORE ENTRY", color: "#f59e0b" },
+    no: { label: "✕  DO NOT TAKE THIS TRADE", color: "#ef4444" },
+  };
+  const v = verdictMap[d.verdict];
+  roundRect(ctx, pad + 40, y, W - pad * 2 - 80, 90, 16);
+  ctx.fillStyle = `${v.color}22`;
+  ctx.fill();
+  ctx.strokeStyle = `${v.color}66`;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = v.color;
+  ctx.font = "800 32px ui-sans-serif, system-ui";
+  ctx.textBaseline = "middle";
+  ctx.fillText(v.label, pad + 70, y + 45);
+  // grade right
+  ctx.font = "800 40px ui-monospace, Menlo, monospace";
+  ctx.textAlign = "right";
+  ctx.fillText(d.grade, W - pad - 70, y + 45);
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+
+  // Suggested size block
+  y += 130;
+  roundRect(ctx, pad + 40, y, W - pad * 2 - 80, 130, 18);
+  const sizeGrad = ctx.createLinearGradient(0, y, W, y + 130);
+  sizeGrad.addColorStop(0, "rgba(99,102,241,0.25)");
+  sizeGrad.addColorStop(1, "rgba(99,102,241,0.05)");
+  ctx.fillStyle = sizeGrad;
+  ctx.fill();
+  ctx.strokeStyle = "rgba(165,180,252,0.4)";
+  ctx.stroke();
+  ctx.fillStyle = "#a5b4fc";
+  ctx.font = "600 16px ui-sans-serif, system-ui";
+  ctx.fillText("SUGGESTED EXECUTION SIZE", pad + 70, y + 22);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "800 56px ui-monospace, Menlo, monospace";
+  ctx.fillText(d.sizeText, pad + 70, y + 50);
+
+  // Stats grid
+  y += 170;
+  const stats: { label: string; value: string; color?: string }[] = [
+    { label: "ENTRY", value: d.entry },
+    { label: "STOP LOSS", value: d.stop, color: "#ef4444" },
+    { label: "TAKE PROFIT", value: d.tp, color: "#22c55e" },
+    { label: "DOLLAR RISK", value: d.riskText, color: "#ef4444" },
+    { label: "ESTIMATED REWARD", value: d.rewardText, color: "#22c55e" },
+    { label: "RISK : REWARD", value: d.rrText },
+    { label: "MOVE TO STOP", value: d.moveStopText },
+    { label: "MOVE TO TARGET", value: d.moveTargetText },
+  ];
+
+  const cols = 2;
+  const cellW = (W - pad * 2 - 80 - 20) / cols;
+  const cellH = 100;
+  stats.forEach((stat, i) => {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const cx = pad + 40 + col * (cellW + 20);
+    const cy = y + row * (cellH + 14);
+    roundRect(ctx, cx, cy, cellW, cellH, 14);
+    ctx.fillStyle = "rgba(255,255,255,0.04)";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.08)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,0.5)";
+    ctx.font = "600 13px ui-sans-serif, system-ui";
+    ctx.fillText(stat.label, cx + 20, cy + 20);
+    ctx.fillStyle = stat.color ?? "#ffffff";
+    ctx.font = "700 26px ui-monospace, Menlo, monospace";
+    ctx.fillText(stat.value, cx + 20, cy + 48);
+  });
+
+  // Footer
+  const footerY = H - pad - 60;
+  ctx.fillStyle = "rgba(255,255,255,0.35)";
+  ctx.font = "400 16px ui-sans-serif, system-ui";
+  ctx.fillText(`Balance ${d.balanceText} · Risk ${d.riskPctText}`, pad + 40, footerY);
+  ctx.textAlign = "right";
+  ctx.fillStyle = "rgba(165,180,252,0.7)";
+  ctx.font = "600 16px ui-sans-serif, system-ui";
+  ctx.fillText("Validate risk. Grade setups. Execute with confidence.", W - pad - 40, footerY);
+  ctx.textAlign = "left";
+
+  canvas.toBlob((blob) => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `pipgrade-${(d.asset || "setup").toLowerCase().replace(/\s+/g, "-")}-${Date.now()}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, "image/png");
+}
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
 }
