@@ -223,21 +223,80 @@ function TradePlanChecker() {
   const dash = "—";
   const moneyOrDash = (n: number | null) => (n === null ? dash : fmtMoney(n));
   const rrText = result.ready && result.rr !== null ? `${result.rr.toFixed(2)} : 1` : dash;
-  const moveStopText = result.ready && result.moveToStopPct !== null ? `${result.moveToStopPct.toFixed(2)}%` : dash;
-  const moveTargetText = result.ready && result.moveToTargetPct !== null ? `${result.moveToTargetPct.toFixed(2)}%` : dash;
+
+  // Pip / point distance — derived from asset type and pair name
+  const pipSize = (() => {
+    if (s.assetType === "forex") return /JPY/i.test(s.asset) ? 0.01 : 0.0001;
+    if (s.assetType === "gold") return 0.1;
+    if (s.assetType === "stocks") return 0.01;
+    return 1; // indices, crypto
+  })();
+  const distanceUnit = s.assetType === "forex" ? "pips" : "pts";
+
+  const entryN = num(s.entry);
+  const stopN = num(s.stop);
+  const tpN = num(s.tp);
+  const pipN = num(s.pipValue);
+  const balanceN = num(s.balance);
+  const riskPctN = num(s.riskPct);
+
+  const stopDistRaw = entryN !== null && stopN !== null ? Math.abs(entryN - stopN) : null;
+  const targetDistRaw = entryN !== null && tpN !== null ? Math.abs(tpN - entryN) : null;
+  const stopPips = stopDistRaw !== null ? stopDistRaw / pipSize : null;
+  const targetPips = targetDistRaw !== null ? targetDistRaw / pipSize : null;
+  const fmtPips = (n: number) =>
+    n.toLocaleString(undefined, { maximumFractionDigits: s.assetType === "forex" ? 1 : 2 });
+
+  const moveStopText =
+    result.ready && result.moveToStopPct !== null && stopPips !== null
+      ? `${fmtPips(stopPips)} ${distanceUnit} · ${result.moveToStopPct.toFixed(2)}%`
+      : dash;
+  const moveTargetText =
+    result.ready && result.moveToTargetPct !== null && targetPips !== null
+      ? `${fmtPips(targetPips)} ${distanceUnit} · ${result.moveToTargetPct.toFixed(2)}%`
+      : dash;
   const riskText = dollarRiskVal !== null ? moneyOrDash(dollarRiskVal) : dash;
   const rewardText = result.ready ? moneyOrDash(result.reward) : dash;
 
-  // Size validation messages
-  const entryN = num(s.entry);
-  const stopN = num(s.stop);
-  const pipN = num(s.pipValue);
-  const stopDistValid = entryN !== null && stopN !== null && Math.abs(entryN - stopN) > 0;
-  const pipValid = pipN !== null && pipN > 0;
-  const sizeNote = !stopDistValid
-    ? "Enter a valid stop loss to calculate size."
-    : !pipValid
-      ? "Enter a valid pip/point value."
+  // Per-field validation for sizing
+  const checks: { label: string; ok: boolean; msg?: string }[] = [
+    {
+      label: "Account balance",
+      ok: balanceN !== null && balanceN > 0,
+      msg: balanceN === null ? "Required" : balanceN <= 0 ? "Must be greater than 0" : undefined,
+    },
+    {
+      label: "Risk %",
+      ok: riskPctN !== null && riskPctN > 0 && riskPctN <= 100,
+      msg: riskPctN === null ? "Required" : riskPctN <= 0 ? "Must be greater than 0" : riskPctN > 100 ? "Max 100%" : undefined,
+    },
+    {
+      label: "Entry price",
+      ok: entryN !== null && entryN > 0,
+      msg: entryN === null ? "Required" : "Must be greater than 0",
+    },
+    {
+      label: "Stop loss",
+      ok: stopN !== null && stopN > 0 && entryN !== null && Math.abs(entryN - stopN) > 0,
+      msg:
+        stopN === null
+          ? "Required"
+          : stopN <= 0
+            ? "Must be greater than 0"
+            : entryN !== null && stopN === entryN
+              ? "Cannot equal entry"
+              : undefined,
+    },
+    {
+      label: s.sizingMode === "advanced" ? "Pip / point value" : "Pip value",
+      ok: pipN !== null && pipN > 0,
+      msg: pipN === null ? "Required" : "Must be greater than 0",
+    },
+  ];
+  const failingChecks = checks.filter((c) => !c.ok);
+  const sizeNote =
+    failingChecks.length > 0
+      ? `${failingChecks.length} input${failingChecks.length === 1 ? "" : "s"} need attention`
       : null;
 
   const riskConfirmText =
@@ -247,37 +306,23 @@ function TradePlanChecker() {
 
   const handleSave = () => {
     if (!result.ready) return;
-    const lines = [
-      "TRADE PLAN",
-      "==========",
-      `Asset: ${s.asset || "—"}`,
-      `Direction: ${s.direction.toUpperCase()}`,
-      `Entry: ${s.entry}   Stop: ${s.stop}   Target: ${s.tp}`,
-      "",
-      `Account Balance: ${fmtMoney(num(s.balance)!)}`,
-      `Risk %: ${s.riskPct}%`,
-      `Dollar Risk: ${riskText}`,
-      `Estimated Reward: ${rewardText}`,
-      `R:R: ${rrText}`,
-      `Move to Stop: ${moveStopText}`,
-      `Move to Target: ${moveTargetText}`,
-      `Suggested Size: ${sizeText}`,
-      "",
-      `Grade: ${result.grade} (${GRADE_LABEL[result.grade]})`,
-      `Verdict: ${verdictText(result.verdict)}`,
-      "",
-      `Generated: ${new Date().toLocaleString()}`,
-    ].join("\n");
-
-    const blob = new Blob([lines], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `trade-plan-${s.asset || "setup"}-${Date.now()}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    downloadTradeCard({
+      asset: s.asset || "UNNAMED",
+      direction: s.direction,
+      grade: result.grade,
+      verdict: result.verdict,
+      entry: s.entry,
+      stop: s.stop,
+      tp: s.tp,
+      balanceText: fmtMoney(balanceN!),
+      riskPctText: `${s.riskPct}%`,
+      riskText,
+      rewardText,
+      rrText,
+      sizeText,
+      moveStopText,
+      moveTargetText,
+    });
   };
 
   return (
