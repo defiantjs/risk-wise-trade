@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "sdk_version": "0.20.1",
+  "path": "/mcp",
+  "auth": {
+    "type": "none"
+  },
+  "mcp": {
+    "server": {
+      "name": "pipgrade-mcp",
+      "version": "0.1.0",
+      "title": "PipGrade"
+    },
+    "tools": [
+      {
+        "name": "grade_trade_setup",
+        "title": "Grade a trade setup",
+        "description": "Validate a pre-trade plan. Given account balance, risk %, entry, stop, take profit, direction and asset type, returns dollar risk, reward, R:R, suggested position size, a verdict (valid/adjust/no) and a letter grade (A/B/C/Warning) with coaching notes.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "balance": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Account balance in USD."
+            },
+            "riskPct": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Risk per trade as a percentage of balance (e.g. 1 for 1%)."
+            },
+            "direction": {
+              "type": "string",
+              "enum": [
+                "buy",
+                "sell"
+              ],
+              "description": "Trade direction."
+            },
+            "entry": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Entry price."
+            },
+            "stop": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Stop-loss price."
+            },
+            "takeProfit": {
+              "description": "Take-profit price. Omit to get partial sizing only.",
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "assetType": {
+              "default": "forex",
+              "description": "Asset class. Determines default pip/point value and size unit.",
+              "type": "string",
+              "enum": [
+                "forex",
+                "gold",
+                "indices",
+                "crypto",
+                "stocks"
+              ]
+            },
+            "pipValue": {
+              "description": "Dollar value per 1.0 price move per 1 unit. Defaults per asset type: forex 10, others 1.",
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "asset": {
+              "description": "Optional symbol/pair label, e.g. 'EURUSD', for context.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "balance",
+            "riskPct",
+            "direction",
+            "entry",
+            "stop"
+          ]
+        },
+        "outputSchema": null
+      }
+    ]
+  }
+}
