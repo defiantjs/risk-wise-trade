@@ -429,7 +429,7 @@ function TradePlanChecker() {
       : null;
 
   const [isGenerating, setIsGenerating] = useState(false);
-  const [manualSaveUrl, setManualSaveUrl] = useState<string | null>(null);
+  const [manualSaveCard, setManualSaveCard] = useState<ManualSaveCard | null>(null);
 
   const handleSave = (executionScore: number) => {
     if (!result.ready) return;
@@ -507,7 +507,7 @@ function TradePlanChecker() {
           breakdown: cardBreakdown,
         });
         const filename = `pipgrade-${(s.asset || "setup").toLowerCase().replace(/\s+/g, "-")}-${Date.now()}.png`;
-        await saveOrShareTradeCard(blob, filename, setManualSaveUrl);
+        await saveOrShareTradeCard(blob, filename, setManualSaveCard);
       } catch (err) {
         console.error("Trade card generation failed:", err);
       } finally {
@@ -756,11 +756,11 @@ function TradePlanChecker() {
         </p>
       </div>
 
-      {manualSaveUrl && (
+      {manualSaveCard && (
         <ManualSaveOverlay
-          url={manualSaveUrl}
+          card={manualSaveCard}
           onClose={() => {
-            setManualSaveUrl(null);
+            setManualSaveCard(null);
           }}
 
         />
@@ -771,17 +771,51 @@ function TradePlanChecker() {
 
 /* ---------- Subcomponents ---------- */
 
-// Shown when neither the Web Share API nor the download attribute is
-// available (older iOS Safari, some in-app WebViews) -- long-pressing the
-// image is a baseline capability on essentially every mobile browser.
-function ManualSaveOverlay({ url, onClose }: { url: string; onClose: () => void }) {
+type ManualSaveCard = {
+  dataUrl: string;
+  blob: Blob;
+  filename: string;
+};
+
+async function shareManualSaveCard(card: ManualSaveCard) {
+  try {
+    const file = new File([card.blob], card.filename, { type: "image/png" });
+    const nav = navigator as Navigator & { canShare?: (data?: ShareData) => boolean };
+    if (navigator.share && (!nav.canShare || nav.canShare({ files: [file] }))) {
+      await navigator.share({ files: [file], title: "PipGrade Trade Card" });
+      return;
+    }
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") return;
+  }
+
+  try {
+    const a = document.createElement("a");
+    a.href = card.dataUrl;
+    a.download = card.filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  } catch {
+    window.open(card.dataUrl, "_blank", "noopener,noreferrer");
+  }
+}
+
+// Mobile browsers frequently block generated-file downloads unless the save
+// action is triggered directly from a fresh tap, so the generated card is held
+// here and the Share/Save button performs the native action from that tap.
+function ManualSaveOverlay({ card, onClose }: { card: ManualSaveCard; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-black/90 p-6 backdrop-blur-sm">
       <p className="text-center text-sm font-medium text-white">
-        Press and hold the image, then choose <span className="text-primary">Save to Photos</span>.
+        Tap <span className="text-primary">Share / Save</span>, or press and hold the image to save it.
       </p>
+      <Button onClick={() => shareManualSaveCard(card)} className="w-full max-w-xs">
+        <Download className="mr-2 h-4 w-4" />
+        Share / Save Image
+      </Button>
       <img
-        src={url}
+        src={card.dataUrl}
         alt="PipGrade trade card"
         className="max-h-[70vh] w-auto rounded-xl border border-white/10 shadow-2xl"
       />
@@ -1932,27 +1966,24 @@ function renderTradeCardBlob(d: TradeCardData): Promise<Blob> {
 async function saveOrShareTradeCard(
   blob: Blob,
   filename: string,
-  onManualSaveNeeded: (url: string) => void
+  onManualSaveNeeded: (card: ManualSaveCard) => void
 ) {
-  try {
-    const file = new File([blob], filename, { type: "image/png" });
-    const nav = navigator as Navigator & { canShare?: (data?: ShareData) => boolean };
-    if (nav.canShare && nav.canShare({ files: [file] })) {
-      await navigator.share({ files: [file], title: "PipGrade Trade Card" });
-      return;
-    }
-  } catch (err) {
-    // AbortError = user cancelled the native share sheet — that's a
-    // deliberate choice, not a failure, so don't fall through to anything else.
-    if (err instanceof Error && err.name === "AbortError") return;
-    // Any other share failure falls through to the methods below.
-  }
-
   const isCoarsePointer =
     typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
-  const url = URL.createObjectURL(blob);
 
-  if (!isCoarsePointer) {
+  if (isCoarsePointer) {
+    const dataUrl: string = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(reader.error ?? new Error("FileReader failed"));
+      reader.readAsDataURL(blob);
+    });
+    onManualSaveNeeded({ dataUrl, blob, filename });
+    return;
+  }
+
+  const url = URL.createObjectURL(blob);
+  try {
     // Mouse-driven desktop browsers: the classic download attribute is reliable here.
     const a = document.createElement("a");
     a.href = url;
@@ -1960,22 +1991,9 @@ async function saveOrShareTradeCard(
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+  } finally {
     setTimeout(() => URL.revokeObjectURL(url), 4000);
-    return;
   }
-
-  // Touch device with no file-sharing support: show it full-screen so the
-  // user can long-press -> Save Image. iOS Safari's long-press menu only
-  // offers "Save to Photos" for data:/http(s): image URLs -- blob: URLs
-  // silently do nothing -- so convert to a data URL for the overlay.
-  URL.revokeObjectURL(url);
-  const dataUrl: string = await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(reader.error ?? new Error("FileReader failed"));
-    reader.readAsDataURL(blob);
-  });
-  onManualSaveNeeded(dataUrl);
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
