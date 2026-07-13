@@ -339,6 +339,49 @@ function TradePlanChecker() {
   const riskText = dollarRiskVal !== null ? moneyOrDash(dollarRiskVal) : dash;
   const rewardText = result.ready ? moneyOrDash(result.reward) : dash;
 
+  // Commodity CFD "Position Breakdown" — underlying quantity and per-move P&L.
+  const contractSizeN = num(s.contractSize);
+  const isCommodity = s.assetType === "commodities";
+  const commodityLabel = /XAU|GOLD/i.test(s.asset) ? "Gold" : /XAG|SILVER/i.test(s.asset) ? "Silver" : /WTI|BRENT|OIL/i.test(s.asset) ? "Oil" : "";
+  const commodityUnit = /XAU|XAG|GOLD|SILVER/i.test(s.asset) || !s.asset.trim() ? "oz" : "units";
+  const breakdown =
+    isCommodity && suggestedSizeVal !== null && suggestedSizeVal > 0 && contractSizeN && contractSizeN > 0 && brokerPointN && brokerPointN > 0
+      ? {
+          size: suggestedSizeVal,
+          underlyingQty: suggestedSizeVal * contractSizeN,
+          unit: commodityUnit,
+          label: commodityLabel,
+          perPointMove: suggestedSizeVal * contractSizeN * brokerPointN, // $ per 1 point (e.g. $0.01)
+          perUnitMove: suggestedSizeVal * contractSizeN,                  // $ per $1.00
+          pointSize: brokerPointN,
+        }
+      : null;
+
+  // "How size was calculated" trace (commodities only, when all inputs present).
+  const howCalculated =
+    isCommodity && balanceN !== null && riskPctN !== null && dollarRiskVal !== null && stopDistRaw !== null && contractSizeN && contractSizeN > 0
+      ? {
+          balance: balanceN,
+          riskPct: riskPctN,
+          dollarRisk: dollarRiskVal,
+          stopDist: stopDistRaw,
+          contractSize: contractSizeN,
+          riskPerLot: stopDistRaw * contractSizeN,
+          size: suggestedSizeVal ?? 0,
+          unit: commodityUnit,
+        }
+      : null;
+
+  // Distance in $ and points (commodities).
+  const stopDistanceText =
+    isCommodity && stopDistRaw !== null && stopPips !== null
+      ? `$${stopDistRaw.toFixed(2)} · ${fmtPips(stopPips)} pts`
+      : null;
+  const targetDistanceText =
+    isCommodity && targetDistRaw !== null && targetPips !== null
+      ? `$${targetDistRaw.toFixed(2)} · ${fmtPips(targetPips)} pts`
+      : null;
+
   // Per-field validation for sizing
   const checks: { label: string; ok: boolean; msg?: string }[] = [
     {
