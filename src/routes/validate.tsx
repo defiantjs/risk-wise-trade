@@ -1743,7 +1743,38 @@ function renderTradeCardBlob(d: TradeCardData): Promise<Blob> {
     ctx.fillStyle = stat.color ?? "#ffffff";
     ctx.font = "700 24px ui-monospace, Menlo, monospace";
     ctx.fillText(stat.value, cx + 18, cy + 45);
+    if (stat.label === "DOLLAR RISK" && d.riskSubText) {
+      ctx.fillStyle = "rgba(255,255,255,0.45)";
+      ctx.font = "500 12px ui-sans-serif, system-ui";
+      ctx.fillText(d.riskSubText, cx + 18, cy + 74);
+    }
   });
+
+  // "How size is calculated" callout (commodities only) — mirrors the in-app
+  // expandable trace so a shared card is self-explanatory.
+  if (d.howCalcText) {
+    const boxY = y + 4 * (cellH + 14) + 8;
+    const boxH = 74;
+    const boxW = W - inner * 2 - 68;
+    roundRect(ctx, inner + 34, boxY, boxW, boxH, 14);
+    ctx.fillStyle = "rgba(255,255,255,0.04)";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.08)";
+    ctx.stroke();
+    // small info glyph
+    ctx.fillStyle = "rgba(196,181,253,0.85)";
+    ctx.font = "800 20px ui-sans-serif, system-ui";
+    ctx.textBaseline = "middle";
+    ctx.fillText("ⓘ", inner + 58, boxY + boxH / 2);
+    ctx.textBaseline = "top";
+    ctx.fillStyle = "rgba(255,255,255,0.55)";
+    ctx.font = "600 12px ui-sans-serif, system-ui";
+    ctx.fillText("HOW SIZE IS CALCULATED", inner + 90, boxY + 14);
+    ctx.fillStyle = "rgba(255,255,255,0.82)";
+    ctx.font = "500 14px ui-sans-serif, system-ui";
+    wrapText(ctx, d.howCalcText, inner + 90, boxY + 36, boxW - 110, 18);
+  }
+
 
   // Footer — foil divider, seal, serial, tagline
   const footerRuleY = H - inner - 96;
