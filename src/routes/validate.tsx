@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
-type AssetType = "forex" | "gold" | "indices" | "crypto" | "stocks";
+type AssetType = "forex" | "commodities" | "indices" | "crypto" | "stocks";
 type Direction = "buy" | "sell";
 type SizingMode = "quick" | "advanced";
 
@@ -40,11 +40,31 @@ const ASSET_TYPES: {
   hint: string;
 }[] = [
   { value: "forex", label: "Forex", pipValue: "10", unit: "lots", hint: "Standard lot ≈ $10/pip on USD-quoted pairs." },
-  { value: "gold", label: "Gold", pipValue: "1", unit: "oz", hint: "XAUUSD ≈ $1 per $0.01 move per 1 oz contract." },
-  { value: "indices", label: "Indices", pipValue: "1", unit: "contracts", hint: "Typical CFD ≈ $1 per point per contract. Verify with broker." },
+  { value: "commodities", label: "Metals & Energy", pipValue: "1", unit: "contracts", hint: "Gold/Silver ≈ $1 per $0.01 move; Oil (WTI/Brent) ≈ $1 per $0.01 move on a standard CFD contract. Verify contract size with broker." },
+  { value: "indices", label: "Indices", pipValue: "1", unit: "contracts", hint: "Typical CFD (NAS100, US500, US30…) ≈ $1 per point per contract. Verify with broker." },
   { value: "crypto", label: "Crypto", pipValue: "1", unit: "units", hint: "Spot crypto ≈ $1 per $1 move per 1 unit." },
-  { value: "stocks", label: "Stocks", pipValue: "1", unit: "shares", hint: "$1 move per share = $1 P&L per share." },
+  { value: "stocks", label: "Stocks / ETFs", pipValue: "1", unit: "shares", hint: "$1 move per share = $1 P&L per share. Applies to ETFs (SPY, QQQ…) too." },
 ];
+
+// Lightweight symbol sniffing so the sizing math doesn't silently stay on
+// Forex defaults when someone types an index, commodity, or stock into the
+// free-text Asset / pair field without touching the Asset type dropdown.
+const ASSET_TYPE_PATTERNS: { pattern: RegExp; type: AssetType }[] = [
+  { pattern: /^(XAU|XAG|GOLD|SILVER|WTI|BRENT|USOIL|UKOIL|XTIUSD|XBRUSD|CL1?)/i, type: "commodities" },
+  { pattern: /^(NAS100|US100|USTEC|SPX500|US500|SPX|US30|DJ30|DJI|GER40|DAX40|DAX|UK100|FTSE|JPN225|NIKKEI|HK50|AUS200)/i, type: "indices" },
+  { pattern: /^(BTC|ETH|XRP|SOL|DOGE|LTC|ADA|BNB|AVAX|MATIC)/i, type: "crypto" },
+  { pattern: /^[A-Z]{3}(USD|EUR|GBP|JPY|CHF|AUD|CAD|NZD)$/i, type: "forex" },
+  { pattern: /^[A-Z]{1,5}$/i, type: "stocks" }, // bare tickers, e.g. AAPL, SPY, TSLA
+];
+
+function detectAssetType(pair: string): AssetType | null {
+  const trimmed = pair.trim();
+  if (!trimmed) return null;
+  for (const { pattern, type } of ASSET_TYPE_PATTERNS) {
+    if (pattern.test(trimmed)) return type;
+  }
+  return null;
+}
 
 export const Route = createFileRoute("/validate")({ component: TradePlanChecker });
 
@@ -93,12 +113,41 @@ function TradePlanChecker() {
   const set = <K extends keyof typeof DEFAULTS>(k: K, v: (typeof DEFAULTS)[K]) =>
     setS((prev) => ({ ...prev, [k]: v }));
 
+  // Tracks whether the trader manually picked an Asset type, so auto-detection
+  // never fights a deliberate choice — only fills in when they haven't chosen yet.
+  const [assetTypeTouched, setAssetTypeTouched] = useState(false);
+  const [autoDetected, setAutoDetected] = useState(false);
+
+  const setAssetType = (v: AssetType) => {
+    setAssetTypeTouched(true);
+    setAutoDetected(false);
+    set("assetType", v);
+  };
+
   // Auto-fill pip value + unit when in Quick mode and asset type changes
   useEffect(() => {
     if (s.sizingMode !== "quick") return;
     const a = ASSET_TYPES.find((x) => x.value === s.assetType)!;
     setS((prev) => ({ ...prev, pipValue: a.pipValue, unitLabel: a.unit }));
   }, [s.assetType, s.sizingMode]);
+
+  // Detect asset type from what's typed in Asset / pair (e.g. "WTI", "NAS100",
+  // "AAPL") so the sizing math doesn't stay silently pinned to Forex defaults.
+  // Only runs until the trader manually overrides the dropdown; clearing the
+  // pair field re-arms auto-detection.
+  useEffect(() => {
+    if (!s.asset.trim()) {
+      setAssetTypeTouched(false);
+      setAutoDetected(false);
+      return;
+    }
+    if (assetTypeTouched) return;
+    const detected = detectAssetType(s.asset);
+    if (detected && detected !== s.assetType) {
+      setS((prev) => ({ ...prev, assetType: detected }));
+      setAutoDetected(true);
+    }
+  }, [s.asset]);
 
   const result = useMemo(() => {
     const balance = num(s.balance);
@@ -202,7 +251,7 @@ function TradePlanChecker() {
       ? ASSET_TYPES.find((a) => a.value === s.assetType)!.unit
       : s.unitLabel?.trim() || "units";
     const decimalsByAsset: Record<AssetType, number> = {
-      forex: 2, gold: 2, indices: 2, crypto: 4, stocks: 2,
+      forex: 2, commodities: 2, indices: 2, crypto: 4, stocks: 2,
     };
     const decimals = decimalsByAsset[s.assetType] ?? 2;
     return `${size.toLocaleString(undefined, {
@@ -228,7 +277,7 @@ function TradePlanChecker() {
   // Pip / point distance — derived from asset type and pair name
   const pipSize = (() => {
     if (s.assetType === "forex") return /JPY/i.test(s.asset) ? 0.01 : 0.0001;
-    if (s.assetType === "gold") return 0.1;
+    if (s.assetType === "commodities") return 0.01; // gold/silver/oil quoted to the cent on most CFDs
     if (s.assetType === "stocks") return 0.01;
     return 1; // indices, crypto
   })();
@@ -246,15 +295,17 @@ function TradePlanChecker() {
   const stopPips = stopDistRaw !== null ? stopDistRaw / pipSize : null;
   const targetPips = targetDistRaw !== null ? targetDistRaw / pipSize : null;
   const fmtPips = (n: number) =>
-    n.toLocaleString(undefined, { maximumFractionDigits: s.assetType === "forex" ? 1 : 2 });
+    Math.abs(n) >= 10000
+      ? n.toLocaleString(undefined, { notation: "compact", maximumFractionDigits: 1 })
+      : n.toLocaleString(undefined, { maximumFractionDigits: s.assetType === "forex" ? 1 : 2 });
 
   const moveStopText =
     result.ready && result.moveToStopPct !== null && stopPips !== null
-      ? `${fmtPips(stopPips)} ${distanceUnit} · ${result.moveToStopPct.toFixed(2)}%`
+      ? `${result.moveToStopPct.toFixed(2)}% · ${fmtPips(stopPips)} ${distanceUnit}`
       : dash;
   const moveTargetText =
     result.ready && result.moveToTargetPct !== null && targetPips !== null
-      ? `${fmtPips(targetPips)} ${distanceUnit} · ${result.moveToTargetPct.toFixed(2)}%`
+      ? `${result.moveToTargetPct.toFixed(2)}% · ${fmtPips(targetPips)} ${distanceUnit}`
       : dash;
   const riskText = dollarRiskVal !== null ? moneyOrDash(dollarRiskVal) : dash;
   const rewardText = result.ready ? moneyOrDash(result.reward) : dash;
@@ -395,12 +446,17 @@ function TradePlanChecker() {
                 </p>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="Asset type">
-                    <Select value={s.assetType} onValueChange={(v) => set("assetType", v as AssetType)}>
+                    <Select value={s.assetType} onValueChange={(v) => setAssetType(v as AssetType)}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {ASSET_TYPES.map((a) => <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>)}
                       </SelectContent>
                     </Select>
+                    {autoDetected && (
+                      <p className="mt-1 text-[10px] text-primary">
+                        Auto-detected from &ldquo;{s.asset.trim()}&rdquo; — change if wrong.
+                      </p>
+                    )}
                   </Field>
                   {s.sizingMode === "advanced" ? (
                     <Field label="Unit label">
