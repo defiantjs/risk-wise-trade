@@ -1450,12 +1450,16 @@ type TradeCardData = {
   balanceText: string;
   riskPctText: string;
   riskText: string;
+  riskSubText: string | null;
   rewardText: string;
   rrText: string;
   sizeText: string;
   moveStopText: string;
   moveTargetText: string;
+  howCalcText: string | null;
+  validSubText: string;
 };
+
 
 const GRADE_THEME: Record<Grade, { primary: string; secondary: string; glow: string; ring: string; tier: string }> = {
   A: { primary: "#f5d38b", secondary: "#c4b5fd", glow: "rgba(245,211,139,0.38)", ring: "rgba(245,211,139,0.9)", tier: "ELITE" },
