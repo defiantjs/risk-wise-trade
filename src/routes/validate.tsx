@@ -4,8 +4,10 @@ import {
   Activity,
   AlertTriangle,
   CheckCircle2,
+  ClipboardCheck,
   Download,
   Info,
+  Lock,
   Package,
   RotateCcw,
   Scale,
@@ -234,6 +236,8 @@ function TradePlanChecker() {
       dollarRisk,
       reward,
       rr,
+      riskPct: riskPct!,
+      directionMismatch,
       grade,
       verdict,
       coaching,
@@ -356,26 +360,46 @@ function TradePlanChecker() {
       ? `At this size, max account risk = ${num(s.riskPct)}% / ${fmtMoney(dollarRiskVal)}`
       : null;
 
-  const handleSave = () => {
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  const handleSave = (executionScore: number) => {
     if (!result.ready) return;
-    downloadTradeCard({
-      asset: s.asset || "UNNAMED",
-      direction: s.direction,
-      grade: result.grade,
-      verdict: result.verdict,
-      entry: s.entry,
-      stop: s.stop,
-      tp: s.tp,
-      balanceText: fmtMoney(balanceN!),
-      riskPctText: `${s.riskPct}%`,
-      riskText,
-      rewardText,
-      rrText,
-      sizeText,
-      moveStopText,
-      moveTargetText,
-    });
+    // Brief on-screen celebration before the PNG generates — makes the export
+    // feel like minting a card, not silently saving a screenshot.
+    setIsGenerating(true);
+    setTimeout(() => {
+      downloadTradeCard({
+        asset: s.asset || "UNNAMED",
+        direction: s.direction,
+        grade: result.grade,
+        verdict: result.verdict,
+        executionScore,
+        entry: s.entry,
+        stop: s.stop,
+        tp: s.tp,
+        balanceText: fmtMoney(balanceN!),
+        riskPctText: `${s.riskPct}%`,
+        riskText,
+        rewardText,
+        rrText,
+        sizeText,
+        moveStopText,
+        moveTargetText,
+      });
+      setIsGenerating(false);
+    }, 550);
   };
+
+  // Growth Planner handoff — carry this validated trade's numbers over as a
+  // starting point rather than making the trader retype them. Plain query
+  // params (read client-side on the Growth Planner) so this doesn't depend
+  // on a typed search schema that isn't defined for that route.
+  const growthHref =
+    result.ready && balanceN !== null
+      ? `/growth?balance=${encodeURIComponent(String(balanceN))}&risk=${encodeURIComponent(s.riskPct)}${
+          result.rr !== null ? `&rr=${encodeURIComponent(result.rr.toFixed(2))}` : ""
+        }`
+      : "/growth";
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -392,7 +416,7 @@ function TradePlanChecker() {
       <SiteNav />
       <div className="mx-auto max-w-6xl px-4 pb-28 pt-2 sm:px-6 lg:pb-14">
         <header className="mb-8">
-          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Trade Inputs</h1>
+          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Describe Trade</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Describe the setup. PipGrade evaluates it live and returns an Execution Report before you risk capital.
           </p>
@@ -402,7 +426,7 @@ function TradePlanChecker() {
           {/* Inputs */}
           <Card className="glass border-border/50 shadow-xl shadow-black/20 lg:col-span-3">
             <CardHeader>
-              <CardTitle className="text-base font-semibold">Trade inputs</CardTitle>
+              <CardTitle className="text-base font-semibold">Describe Trade</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
               {/* 1. Account + Risk */}
@@ -546,6 +570,9 @@ function TradePlanChecker() {
                     riskText={riskText}
                     rewardText={rewardText}
                     rrText={rrText}
+                    riskPct={result.riskPct}
+                    rr={result.rr}
+                    directionMismatch={result.directionMismatch}
                     grade={result.grade}
                     verdict={result.verdict}
                     coaching={result.coaching}
@@ -555,6 +582,8 @@ function TradePlanChecker() {
                     sizeText={sizeText}
                     sizeNote={sizeNote}
                     riskConfirmText={riskConfirmText}
+                    growthHref={growthHref}
+                    isGenerating={isGenerating}
                     onSave={handleSave}
                   />
                 ) : result.sizingReady ? (
@@ -678,17 +707,22 @@ function ValidationChecklist({ checks }: { checks: Check[] }) {
 
 function EmptyResults({ sizeNote, checks }: { sizeNote: string | null; checks: Check[] }) {
   return (
-    <div className="space-y-4 py-2">
-      <div className="flex flex-col items-center gap-2 text-center">
-        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-muted/60">
-          <Info className="h-5 w-5 text-muted-foreground" />
+    <div className="space-y-4 py-4">
+      <div className="flex flex-col items-center gap-3 text-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/25 to-pink/15 ring-1 ring-primary/30">
+          <ClipboardCheck className="h-6 w-6 text-primary" />
         </div>
-        <p className="text-sm text-muted-foreground">
-          {sizeNote ?? "Fill in the inputs below to see your suggested execution size."}
-        </p>
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">Describe Your Trade</h3>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            Enter your trade parameters to generate an execution report.
+          </p>
+        </div>
       </div>
       <ValidationChecklist checks={checks} />
-      <p className="text-center text-[11px] text-muted-foreground/70">Add a take profit to grade the full setup.</p>
+      <p className="text-center text-[11px] text-muted-foreground/70">
+        {sizeNote ?? "Add a take profit to grade the full setup."}
+      </p>
     </div>
   );
 }
@@ -759,40 +793,282 @@ function gradeColor(grade: Grade) {
   }
 }
 
-function ResultsView({
-  asset, assetType, direction, riskText, rewardText, rrText, grade, verdict,
-  coaching, warnings, moveToStopText, moveToTargetText, sizeText, sizeNote, riskConfirmText, onSave,
-}: {
-  asset: string; assetType: AssetType; direction: Direction; riskText: string; rewardText: string; rrText: string;
-  grade: Grade; verdict: Verdict; coaching: string; warnings: string[];
-  moveToStopText: string; moveToTargetText: string; sizeText: string;
-  sizeNote: string | null; riskConfirmText: string | null; onSave: () => void;
-}) {
-  return (
-    <div className="space-y-5">
-      <VerdictBanner verdict={verdict} />
+/* ---------- Execution Score ----------
+ * Weighted composite so "how good is this trade" is one number, not five
+ * scattered ones. Weights are named and separated out so a future scoring
+ * input (e.g. System Alignment data, once that's real) can be added without
+ * restructuring this.
+ */
+const SCORE_WEIGHTS = { risk: 0.3, reward: 0.3, sizing: 0.2, confirmation: 0.2 } as const;
 
-      {/* Asset summary + grade */}
-      <div className="flex items-center justify-between rounded-lg border border-border/60 bg-secondary/30 px-3 py-2.5">
-        <div className="min-w-0">
-          <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Setup</div>
-          <div className="truncate text-sm font-medium">
-            {asset ? asset.toUpperCase() : "Unnamed"}{" "}
-            <span className={direction === "buy" ? "text-success" : "text-danger"}>· {direction === "buy" ? "Long" : "Short"}</span>
-          </div>
-        </div>
-        <div className="text-right">
-          <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Grade</div>
-          <div className={cn("font-mono text-sm font-bold", gradeColor(grade))}>
-            {grade} <span className="text-xs font-medium opacity-80">({GRADE_LABEL[grade]})</span>
-          </div>
+type TriState = "confirmed" | "review" | "concern";
+
+const CONFIRMATION_ITEMS = [
+  "Market structure supports trade",
+  "High timeframe trend aligned",
+  "High-impact news checked",
+  "Trade follows my written plan",
+  "Position size confirmed",
+];
+
+const TRI_CONFIG: Record<TriState, { label: string; dot: string; glow: string; icon: React.ReactNode }> = {
+  confirmed: { label: "Confirmed", dot: "bg-success", glow: "shadow-[0_0_10px_-2px_var(--success)]", icon: <CheckCircle2 className="h-3.5 w-3.5" /> },
+  review: { label: "Needs Review", dot: "bg-warning", glow: "shadow-[0_0_10px_-2px_var(--warning)]", icon: <Info className="h-3.5 w-3.5" /> },
+  concern: { label: "Concern", dot: "bg-danger", glow: "shadow-[0_0_10px_-2px_var(--danger)]", icon: <AlertTriangle className="h-3.5 w-3.5" /> },
+};
+
+function computeExecutionScore({
+  riskPct, rr, directionMismatch, confirmationState,
+}: { riskPct: number; rr: number | null; directionMismatch: boolean; confirmationState: TriState[] }) {
+  const clamp = (n: number) => Math.max(0, Math.min(100, n));
+
+  let riskScore: number;
+  if (riskPct <= 1) riskScore = 100;
+  else if (riskPct <= 2) riskScore = 100 - (riskPct - 1) * 40;
+  else if (riskPct <= 4) riskScore = 60 - (riskPct - 2) * 30;
+  else riskScore = 0;
+
+  const r = rr ?? 0;
+  let rewardScore: number;
+  if (r >= 3) rewardScore = 100;
+  else if (r >= 2) rewardScore = 80 + (r - 2) * 20;
+  else if (r >= 1.5) rewardScore = 50 + (r - 1.5) * 60;
+  else rewardScore = (r / 1.5) * 50;
+
+  const sizingScore = directionMismatch ? 40 : 100;
+
+  const triValue = (t: TriState) => (t === "confirmed" ? 100 : t === "review" ? 50 : 0);
+  const confirmationScore =
+    confirmationState.length > 0
+      ? confirmationState.reduce((sum, t) => sum + triValue(t), 0) / confirmationState.length
+      : 50;
+
+  const total =
+    clamp(riskScore) * SCORE_WEIGHTS.risk +
+    clamp(rewardScore) * SCORE_WEIGHTS.reward +
+    clamp(sizingScore) * SCORE_WEIGHTS.sizing +
+    clamp(confirmationScore) * SCORE_WEIGHTS.confirmation;
+
+  return Math.round(clamp(total));
+}
+
+function useCountUp(target: number, duration = 600) {
+  const [value, setValue] = useState(0);
+  useEffect(() => {
+    let raf: number;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setValue(Math.round(target * eased));
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, duration]);
+  return value;
+}
+
+function ScoreAndGrade({ score, grade }: { score: number; grade: Grade }) {
+  const animated = useCountUp(score);
+  const scoreColor = score >= 80 ? "text-success" : score >= 60 ? "text-warning" : "text-danger";
+  return (
+    <div className="flex items-center justify-between rounded-lg border border-border/60 bg-secondary/30 px-4 py-3.5">
+      <div>
+        <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Execution Score</div>
+        <div className={cn("font-mono text-3xl font-extrabold tracking-tight sm:text-4xl", scoreColor)}>
+          {animated}
+          <span className="text-base font-medium text-muted-foreground">/100</span>
         </div>
       </div>
+      <div className="text-right">
+        <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Grade</div>
+        <div className={cn("font-mono text-lg font-bold", gradeColor(grade))}>
+          {grade} <span className="text-xs font-medium opacity-80">({GRADE_LABEL[grade]})</span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-      {/* Prominent Suggested Size */}
+function tradeReasons({
+  riskPct, rr, directionMismatch, verdict,
+}: { riskPct: number; rr: number | null; directionMismatch: boolean; verdict: Verdict }): { ok: boolean; text: string }[] {
+  const r = rr ?? 0;
+  return [
+    { ok: riskPct <= 2, text: riskPct <= 2 ? "Risk within plan" : "Risk exceeds plan" },
+    { ok: r >= 2, text: r >= 2 ? "Reward exceeds minimum 2R" : "Reward below minimum 2R" },
+    { ok: verdict !== "no", text: verdict !== "no" ? "Position sizing matches account risk" : "Position sizing too aggressive for this setup" },
+    { ok: !directionMismatch, text: !directionMismatch ? "Direction is valid" : "Direction mismatch" },
+  ];
+}
+
+function WhyThisTrade({ verdict, reasons }: { verdict: Verdict; reasons: { ok: boolean; text: string }[] }) {
+  const passed = verdict !== "no";
+  return (
+    <div className={cn("rounded-lg border p-3", passed ? "border-success/30 bg-success/5" : "border-danger/30 bg-danger/5")}>
+      <div className={cn("mb-2 text-xs font-semibold uppercase tracking-wider", passed ? "text-success" : "text-danger")}>
+        {passed ? "Why This Trade Passed" : "Why This Trade Was Flagged"}
+      </div>
+      <ul className="space-y-1.5">
+        {reasons.map((r) => (
+          <li key={r.text} className="flex items-center gap-2 text-xs">
+            {r.ok ? (
+              <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0 text-success" />
+            ) : (
+              <XCircle className="h-3.5 w-3.5 flex-shrink-0 text-danger" />
+            )}
+            <span className={r.ok ? "text-foreground/85" : "text-danger/90"}>{r.text}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function ExecutionConfirmation({
+  state, onChange,
+}: { state: TriState[]; onChange: (i: number, v: TriState) => void }) {
+  const confirmedCount = state.filter((v) => v === "confirmed").length;
+  const pct = Math.round((confirmedCount / state.length) * 100);
+  return (
+    <div className="rounded-lg border border-border/60 bg-background/40 p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <div className="text-xs font-semibold uppercase tracking-wider text-foreground/80">Execution Confirmation</div>
+        <div className="text-[10px] font-semibold text-primary">Execution Readiness: {pct}%</div>
+      </div>
+      <div className="mb-3 h-1.5 w-full overflow-hidden rounded-full bg-secondary/50">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-primary to-pink transition-all duration-500 ease-out"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <ul className="space-y-2">
+        {CONFIRMATION_ITEMS.map((text, i) => (
+          <li key={text} className="flex items-center justify-between gap-3 text-xs">
+            <span className="text-foreground/85">{text}</span>
+            <div className="flex flex-shrink-0 items-center gap-1">
+              {(Object.keys(TRI_CONFIG) as TriState[]).map((tri) => (
+                <button
+                  key={tri}
+                  type="button"
+                  title={TRI_CONFIG[tri].label}
+                  aria-pressed={state[i] === tri}
+                  onClick={() => onChange(i, tri)}
+                  className={cn(
+                    "flex h-6 w-6 items-center justify-center rounded-full border transition-all duration-200",
+                    state[i] === tri
+                      ? cn("scale-110 border-transparent text-white", TRI_CONFIG[tri].dot, TRI_CONFIG[tri].glow)
+                      : "border-border/50 bg-secondary/30 text-muted-foreground/40 hover:text-muted-foreground"
+                  )}
+                >
+                  {TRI_CONFIG[tri].icon}
+                </button>
+              ))}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+const LOCKED_CONTEXT = ["Live Economic Calendar", "DXY Bias", "Volatility", "Session Context"];
+
+function newsHrefFor(assetType: AssetType, asset: string): string | undefined {
+  if (assetType === "crypto") return undefined;
+  if (assetType === "stocks" && asset.trim()) {
+    return `https://finance.yahoo.com/quote/${encodeURIComponent(asset.trim().toUpperCase())}`;
+  }
+  return "https://www.forexfactory.com/calendar";
+}
+
+function MarketContext({ newsHref }: { newsHref?: string }) {
+  const free: { label: string; href?: string }[] = [
+    { label: "Structure" },
+    { label: "News", href: newsHref },
+    { label: "Trading Plan" },
+  ];
+  return (
+    <div className="rounded-lg border border-border/60 bg-secondary/20 p-3">
+      <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-foreground/80">Market Context</div>
+      <div className="grid grid-cols-3 gap-2">
+        {free.map((item) =>
+          item.href ? (
+            <a
+              key={item.label}
+              href={item.href}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-md border border-border/50 bg-background/40 p-2.5 text-center transition-colors hover:border-primary/40"
+            >
+              <CheckCircle2 className="mx-auto h-3.5 w-3.5 text-success" />
+              <div className="mt-1 text-[10px] font-medium text-foreground/80">{item.label} &#8599;</div>
+            </a>
+          ) : (
+            <div key={item.label} className="rounded-md border border-border/50 bg-background/40 p-2.5 text-center">
+              <CheckCircle2 className="mx-auto h-3.5 w-3.5 text-success" />
+              <div className="mt-1 text-[10px] font-medium text-foreground/80">{item.label}</div>
+            </div>
+          )
+        )}
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {LOCKED_CONTEXT.map((label) => (
+          <div key={label} className="rounded-md border border-dashed border-border/50 bg-background/20 p-2.5 text-center opacity-60">
+            <Lock className="mx-auto h-3.5 w-3.5 text-muted-foreground" />
+            <div className="mt-1 text-[10px] font-medium text-muted-foreground">{label}</div>
+          </div>
+        ))}
+      </div>
+      <p className="mt-2 text-center text-[10px] text-muted-foreground/70">Locked cards available in PipGrade Pro</p>
+    </div>
+  );
+}
+
+function ResultsView({
+  asset, assetType, direction, riskText, rewardText, rrText,
+  riskPct, rr, directionMismatch,
+  grade, verdict, coaching, warnings, moveToStopText, moveToTargetText,
+  sizeText, sizeNote, riskConfirmText, growthHref, isGenerating, onSave,
+}: {
+  asset: string; assetType: AssetType; direction: Direction; riskText: string; rewardText: string; rrText: string;
+  riskPct: number; rr: number | null; directionMismatch: boolean;
+  grade: Grade; verdict: Verdict; coaching: string; warnings: string[];
+  moveToStopText: string; moveToTargetText: string; sizeText: string;
+  sizeNote: string | null; riskConfirmText: string | null; growthHref: string; isGenerating: boolean;
+  onSave: (executionScore: number) => void;
+}) {
+  const [confirmationState, setConfirmationState] = useState<TriState[]>(() =>
+    CONFIRMATION_ITEMS.map(() => "review")
+  );
+  const setConfirmation = (i: number, v: TriState) =>
+    setConfirmationState((prev) => prev.map((c, idx) => (idx === i ? v : c)));
+
+  const score = computeExecutionScore({ riskPct, rr, directionMismatch, confirmationState });
+  const reasons = tradeReasons({ riskPct, rr, directionMismatch, verdict });
+  const newsHref = newsHrefFor(assetType, asset);
+
+  return (
+    <div className="space-y-6">
+      {/* 1. Execution Verdict — dominant */}
+      <VerdictBanner verdict={verdict} />
+
+      <div className="flex items-center justify-between px-0.5 text-sm">
+        <span className="truncate font-medium">
+          {asset ? asset.toUpperCase() : "Unnamed"}{" "}
+          <span className={direction === "buy" ? "text-success" : "text-danger"}>
+            &middot; {direction === "buy" ? "Long" : "Short"}
+          </span>
+        </span>
+      </div>
+
+      <ScoreAndGrade score={score} grade={grade} />
+
+      {/* 2. Recommended Position Size */}
       <div className="rounded-xl border border-primary/30 bg-gradient-to-br from-primary/15 via-primary/5 to-transparent p-4 shadow-[0_0_28px_-12px_var(--primary)]">
         <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-primary/90">
-          <Package className="h-3.5 w-3.5" /> Suggested size
+          <Package className="h-3.5 w-3.5" /> Recommended Position Size
         </div>
         <div key={sizeText} className="animate-in fade-in slide-in-from-bottom-1 duration-200 mt-1 font-mono text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
           {sizeText}
@@ -804,17 +1080,20 @@ function ResultsView({
         ) : null}
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-2">
+      {/* 3. Risk / Reward / R:R */}
+      <div className="grid grid-cols-3 gap-2">
         <Stat icon={<AlertTriangle className="h-3.5 w-3.5" />} label="Risk" value={riskText} tone="danger" />
         <Stat icon={<span className="text-sm leading-none">💰</span>} label="Reward" value={rewardText} tone="success" />
         <Stat icon={<Scale className="h-3.5 w-3.5" />} label="R : R" value={rrText} tone="neutral" />
+      </div>
+      <div className="grid grid-cols-2 gap-2">
         <Stat label="Move to stop" value={moveToStopText} tone="neutral" />
         <Stat label="Move to target" value={moveToTargetText} tone="neutral" />
       </div>
 
+      <WhyThisTrade verdict={verdict} reasons={reasons} />
 
-      {/* Coaching */}
+      {/* 4. Coaching */}
       <div className="rounded-lg border border-border/60 bg-secondary/30 p-3">
         <div className="flex items-start gap-2">
           {grade === "A" || grade === "B" ? (
@@ -828,10 +1107,11 @@ function ResultsView({
         </div>
       </div>
 
-      {/* Reality check */}
-      <ExecutionChecklist key={assetType} items={checklistFor(assetType, asset)} />
+      {/* 5. Execution Confirmation */}
+      <ExecutionConfirmation state={confirmationState} onChange={setConfirmation} />
 
-      {/* Warnings */}
+      <MarketContext newsHref={newsHref} />
+
       {warnings.length > 0 && (
         <ul className="space-y-2">
           {warnings.map((w, i) => (
@@ -843,104 +1123,28 @@ function ResultsView({
         </ul>
       )}
 
-      <Button onClick={onSave} className="w-full" variant="secondary">
-        <Download className="mr-2 h-4 w-4" /> Save Trade Plan
+      {/* 6. Generate Trade Card */}
+      <Button
+        onClick={() => onSave(score)}
+        disabled={isGenerating}
+        variant="secondary"
+        className={cn(
+          "w-full transition-all duration-200 hover:scale-[1.01] hover:shadow-[0_0_24px_-6px_var(--primary)]",
+          isGenerating && "animate-pulse"
+        )}
+      >
+        <Download className="mr-2 h-4 w-4" />
+        {isGenerating ? "Generating card..." : "Generate Trade Card"}
       </Button>
 
-      <Link
-        to="/growth"
+      {/* 7. Continue to Growth Planner */}
+      <a
+        href={growthHref}
         className="flex items-center justify-between rounded-lg border border-primary/25 bg-primary/5 px-3.5 py-2.5 text-xs text-foreground/85 transition-colors hover:bg-primary/10"
       >
-        <span>Keep taking setups like this &mdash; see where it leads</span>
-        <span className="font-semibold text-primary">Growth Planner &rarr;</span>
-      </Link>
-    </div>
-  );
-}
-
-/* ---------- Before-you-execute checklist ----------
- * Deliberately static, not data-fed: this is a discipline ritual, not a
- * market-data product. Wiring in live DXY levels / news feeds / earnings
- * calendars is real System Alignment (roadmap V5) — it needs a backend and
- * a data license, and blurs into "signal service" territory the product
- * explicitly isn't. What's cheap and worth doing now: make the question
- * relevant to the instrument, make it something the trader actually
- * confirms (checkbox, not just a bullet to read), and — where a stable,
- * well-known public reference exists — link out to it instead of trying to
- * embed it.
- */
-type ChecklistItem = { text: string; href?: string };
-
-function checklistFor(assetType: AssetType, asset: string): ChecklistItem[] {
-  const contextItem: ChecklistItem = (() => {
-    switch (assetType) {
-      case "forex":
-        return { text: "Is DXY / macro context aligned?", href: "https://www.forexfactory.com/calendar" };
-      case "commodities":
-        return { text: "Is there a macro or supply event driving this move?", href: "https://www.forexfactory.com/calendar" };
-      case "indices":
-        return { text: "Is there a central bank decision or macro print nearby?", href: "https://www.forexfactory.com/calendar" };
-      case "crypto":
-        return { text: "Is there a major protocol, regulatory, or macro event nearby?" };
-      case "stocks":
-        return {
-          text: "Is there an earnings report or company catalyst nearby?",
-          href: asset.trim() ? `https://finance.yahoo.com/quote/${encodeURIComponent(asset.trim().toUpperCase())}` : undefined,
-        };
-    }
-  })();
-
-  return [
-    { text: "Does market structure support this trade?" },
-    contextItem,
-    { text: "Is there high-impact news nearby?" },
-    { text: "Is this part of your plan or impulsive?" },
-  ];
-}
-
-function ExecutionChecklist({ items }: { items: ChecklistItem[] }) {
-  const [checked, setChecked] = useState<boolean[]>(() => items.map(() => false));
-  const doneCount = checked.filter(Boolean).length;
-
-  const toggle = (i: number) => setChecked((prev) => prev.map((c, idx) => (idx === i ? !c : c)));
-
-  return (
-    <div className="rounded-lg border border-border/60 bg-background/40 p-3">
-      <div className="mb-2 flex items-center justify-between">
-        <div className="text-xs font-semibold uppercase tracking-wider text-foreground/80">Before you execute</div>
-        <div className="text-[10px] text-muted-foreground">{doneCount}/{items.length}</div>
-      </div>
-      <ul className="space-y-1.5 text-xs text-foreground/85">
-        {items.map((item, i) => (
-          <li key={item.text} className="flex items-start gap-2">
-            <button
-              type="button"
-              onClick={() => toggle(i)}
-              aria-pressed={checked[i]}
-              aria-label={item.text}
-              className={cn(
-                "mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border text-[10px] font-bold transition-colors",
-                checked[i]
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border/60 bg-secondary/30 text-transparent"
-              )}
-            >
-              &#10003;
-            </button>
-            <span className={cn("flex-1", checked[i] && "text-foreground/50 line-through")}>{item.text}</span>
-            {item.href && (
-              <a
-                href={item.href}
-                target="_blank"
-                rel="noreferrer"
-                className="flex-shrink-0 text-[10px] font-medium text-primary hover:underline"
-              >
-                Check &#8599;
-              </a>
-            )}
-          </li>
-        ))}
-      </ul>
+        <span>Build My Growth Plan</span>
+        <span className="font-semibold text-primary">Continue &rarr;</span>
+      </a>
     </div>
   );
 }
@@ -991,6 +1195,7 @@ type TradeCardData = {
   direction: Direction;
   grade: Grade;
   verdict: Verdict;
+  executionScore: number;
   entry: string;
   stop: string;
   tp: string;
@@ -1005,10 +1210,10 @@ type TradeCardData = {
 };
 
 const GRADE_THEME: Record<Grade, { primary: string; secondary: string; glow: string; ring: string; tier: string }> = {
-  A: { primary: "#f5d38b", secondary: "#fff3d6", glow: "rgba(245,211,139,0.38)", ring: "rgba(245,211,139,0.9)", tier: "ELITE" },
-  B: { primary: "#c4b5fd", secondary: "#f0abfc", glow: "rgba(168,85,247,0.34)", ring: "rgba(196,181,253,0.9)", tier: "VALID" },
-  C: { primary: "#fbbf6d", secondary: "#fde68a", glow: "rgba(251,191,109,0.28)", ring: "rgba(251,191,109,0.85)", tier: "MARGINAL" },
-  Warning: { primary: "#94a3b8", secondary: "#cbd5e1", glow: "rgba(239,68,68,0.18)", ring: "rgba(148,163,184,0.7)", tier: "FLAGGED" },
+  A: { primary: "#f5d38b", secondary: "#c4b5fd", glow: "rgba(245,211,139,0.38)", ring: "rgba(245,211,139,0.9)", tier: "ELITE" },
+  B: { primary: "#c4b5fd", secondary: "#34d399", glow: "rgba(168,85,247,0.34)", ring: "rgba(196,181,253,0.9)", tier: "VALID" },
+  C: { primary: "#fbbf6d", secondary: "#f59e0b", glow: "rgba(251,191,109,0.28)", ring: "rgba(251,191,109,0.85)", tier: "MARGINAL" },
+  Warning: { primary: "#ef4444", secondary: "#7f1d1d", glow: "rgba(239,68,68,0.22)", ring: "rgba(239,68,68,0.75)", tier: "REJECTED" },
 };
 
 function hashCode(str: string): number {
@@ -1133,6 +1338,22 @@ function downloadTradeCard(d: TradeCardData) {
   ctx.fillStyle = "rgba(196,181,253,0.6)";
   ctx.fillText(serial, W - inner - 34, hy + 24);
   ctx.textAlign = "left";
+
+  // Execution Score — left of the grade medallion
+  const medCxForScore = W - inner - 100;
+  const scoreX = medCxForScore - 220;
+  const scoreLabelY = hy + 64;
+  ctx.fillStyle = "rgba(255,255,255,0.5)";
+  ctx.font = "600 13px ui-sans-serif, system-ui";
+  ctx.fillText("EXECUTION SCORE", scoreX, scoreLabelY);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "800 48px ui-monospace, Menlo, monospace";
+  const scoreNumText = `${d.executionScore}`;
+  ctx.fillText(scoreNumText, scoreX, scoreLabelY + 20);
+  const scoreNumWidth = ctx.measureText(scoreNumText).width;
+  ctx.fillStyle = "rgba(255,255,255,0.45)";
+  ctx.font = "700 18px ui-sans-serif, system-ui";
+  ctx.fillText("/100", scoreX + scoreNumWidth + 4, scoreLabelY + 46);
 
   // Grade medallion — the celebratory focal point
   const medCx = W - inner - 100;
