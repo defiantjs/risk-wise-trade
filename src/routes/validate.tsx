@@ -1477,7 +1477,25 @@ function hashCode(str: string): number {
   return h;
 }
 
+function wrapText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number) {
+  const words = text.split(/\s+/);
+  let line = "";
+  let cy = y;
+  for (const word of words) {
+    const test = line ? line + " " + word : word;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      ctx.fillText(line, x, cy);
+      line = word;
+      cy += lineHeight;
+    } else {
+      line = test;
+    }
+  }
+  if (line) ctx.fillText(line, x, cy);
+}
+
 function drawStar(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, color: string, alpha: number) {
+
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.fillStyle = color;
