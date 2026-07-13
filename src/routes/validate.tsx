@@ -1161,11 +1161,33 @@ function MarketContext({ newsHref }: { newsHref?: string }) {
   );
 }
 
+type Breakdown = {
+  size: number;
+  underlyingQty: number;
+  unit: string;
+  label: string;
+  perPointMove: number;
+  perUnitMove: number;
+  pointSize: number;
+} | null;
+
+type HowCalculated = {
+  balance: number;
+  riskPct: number;
+  dollarRisk: number;
+  stopDist: number;
+  contractSize: number;
+  riskPerLot: number;
+  size: number;
+  unit: string;
+} | null;
+
 function ResultsView({
   asset, assetType, direction, riskText, rewardText, rrText,
   riskPct, rr, directionMismatch,
   grade, verdict, coaching, warnings, moveToStopText, moveToTargetText,
   sizeText, sizeNote, riskConfirmText, growthHref, isGenerating, onSave,
+  breakdown, howCalculated, stopDistanceText, targetDistanceText,
 }: {
   asset: string; assetType: AssetType; direction: Direction; riskText: string; rewardText: string; rrText: string;
   riskPct: number; rr: number | null; directionMismatch: boolean;
@@ -1173,6 +1195,8 @@ function ResultsView({
   moveToStopText: string; moveToTargetText: string; sizeText: string;
   sizeNote: string | null; riskConfirmText: string | null; growthHref: string; isGenerating: boolean;
   onSave: (executionScore: number) => void;
+  breakdown: Breakdown; howCalculated: HowCalculated;
+  stopDistanceText: string | null; targetDistanceText: string | null;
 }) {
   const [confirmationState, setConfirmationState] = useState<TriState[]>(() =>
     CONFIRMATION_ITEMS.map(() => "review")
