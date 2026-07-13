@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { AlertTriangle, TrendingUp, Wallet } from "lucide-react";
 import {
@@ -214,6 +214,16 @@ function GrowthPlanner() {
                 )}
               </CardContent>
             </Card>
+
+            {model.ready && (
+              <Link
+                to="/scaling"
+                className="mt-3 flex items-center justify-between rounded-lg border border-primary/25 bg-primary/5 px-3.5 py-2.5 text-xs text-foreground/85 transition-colors hover:bg-primary/10"
+              >
+                <span>Want a day-by-day roadmap instead of a monthly curve?</span>
+                <span className="font-semibold text-primary">Scaling Plan &rarr;</span>
+              </Link>
+            )}
           </div>
         </div>
 

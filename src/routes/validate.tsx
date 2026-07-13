@@ -931,6 +931,38 @@ type TradeCardData = {
   moveTargetText: string;
 };
 
+const GRADE_THEME: Record<Grade, { primary: string; secondary: string; glow: string; ring: string; tier: string }> = {
+  A: { primary: "#f5d38b", secondary: "#fff3d6", glow: "rgba(245,211,139,0.38)", ring: "rgba(245,211,139,0.9)", tier: "ELITE" },
+  B: { primary: "#c4b5fd", secondary: "#f0abfc", glow: "rgba(168,85,247,0.34)", ring: "rgba(196,181,253,0.9)", tier: "VALID" },
+  C: { primary: "#fbbf6d", secondary: "#fde68a", glow: "rgba(251,191,109,0.28)", ring: "rgba(251,191,109,0.85)", tier: "MARGINAL" },
+  Warning: { primary: "#94a3b8", secondary: "#cbd5e1", glow: "rgba(239,68,68,0.18)", ring: "rgba(148,163,184,0.7)", tier: "FLAGGED" },
+};
+
+function hashCode(str: string): number {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) {
+    h = (h << 5) - h + str.charCodeAt(i);
+    h |= 0;
+  }
+  return h;
+}
+
+function drawStar(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, color: string, alpha: number) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  for (let i = 0; i < 4; i++) {
+    const angle = (Math.PI / 2) * i;
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r * 0.28);
+    ctx.lineTo(cx + Math.cos(angle + Math.PI / 4) * r * 0.35, cy + Math.sin(angle + Math.PI / 4) * r * 0.35);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
 function downloadTradeCard(d: TradeCardData) {
   const W = 1080;
   const H = 1350;
@@ -940,6 +972,9 @@ function downloadTradeCard(d: TradeCardData) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
 
+  const theme = GRADE_THEME[d.grade];
+  const celebratory = d.verdict !== "no";
+
   // Background
   const bg = ctx.createLinearGradient(0, 0, W, H);
   bg.addColorStop(0, "#120c1a");
@@ -947,53 +982,126 @@ function downloadTradeCard(d: TradeCardData) {
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, W, H);
 
-  // Subtle radial glow
-  const glow = ctx.createRadialGradient(W / 2, 200, 50, W / 2, 200, 700);
-  glow.addColorStop(0, "rgba(168,85,247,0.20)");
+  // Ambient glow tinted to the grade
+  const glow = ctx.createRadialGradient(W / 2, 220, 50, W / 2, 220, 760);
+  glow.addColorStop(0, theme.glow);
   glow.addColorStop(1, "rgba(168,85,247,0)");
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, W, H);
 
-  // Card frame
-  const pad = 60;
-  roundRect(ctx, pad, pad, W - pad * 2, H - pad * 2, 32);
-  ctx.fillStyle = "rgba(20,24,33,0.7)";
-  ctx.fill();
-  ctx.strokeStyle = "rgba(255,255,255,0.08)";
-  ctx.lineWidth = 2;
+  // Celebratory sparkle field for anything other than a flagged card
+  if (celebratory) {
+    const sparkles = [
+      [140, 140, 10, theme.primary, 0.55], [940, 120, 8, theme.secondary, 0.5],
+      [90, 420, 6, theme.secondary, 0.4], [990, 460, 9, theme.primary, 0.45],
+      [180, 980, 7, theme.primary, 0.35], [900, 1020, 6, theme.secondary, 0.35],
+      [60, 700, 5, theme.secondary, 0.3], [1010, 760, 7, theme.primary, 0.35],
+    ] as const;
+    sparkles.forEach(([x, y, r, c, a]) => drawStar(ctx, x, y, r, c, a));
+  }
+
+  // Outer foil border — thicker, gradient-stroked, keyed to grade
+  const pad = 56;
+  roundRect(ctx, pad, pad, W - pad * 2, H - pad * 2, 34);
+  const foil = ctx.createLinearGradient(pad, pad, W - pad, H - pad);
+  foil.addColorStop(0, theme.primary);
+  foil.addColorStop(0.5, "rgba(255,255,255,0.25)");
+  foil.addColorStop(1, theme.secondary);
+  ctx.save();
+  ctx.strokeStyle = foil;
+  ctx.lineWidth = 5;
+  ctx.shadowColor = theme.glow;
+  ctx.shadowBlur = 30;
   ctx.stroke();
+  ctx.restore();
 
-  // Header — PipGrade brand
-  ctx.fillStyle = "#c4b5fd";
-  ctx.font = "600 28px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto";
+  // Card fill, inset from the foil border
+  const inner = pad + 8;
+  roundRect(ctx, inner, inner, W - inner * 2, H - inner * 2, 28);
+  ctx.fillStyle = "rgba(15,12,22,0.78)";
+  ctx.fill();
+
+  // Header — monogram + wordmark
+  const hx = inner + 34;
+  const hy = inner + 34;
+  roundRect(ctx, hx, hy, 44, 44, 12);
+  const monoGrad = ctx.createLinearGradient(hx, hy, hx + 44, hy + 44);
+  monoGrad.addColorStop(0, "rgba(168,85,247,0.35)");
+  monoGrad.addColorStop(1, "rgba(236,72,153,0.2)");
+  ctx.fillStyle = monoGrad;
+  ctx.fill();
+  ctx.strokeStyle = "rgba(196,181,253,0.6)";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = "#e9d5ff";
+  ctx.font = "800 20px ui-sans-serif, system-ui";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("PG", hx + 22, hy + 23);
+  ctx.textAlign = "left";
   ctx.textBaseline = "top";
-  ctx.fillText("⬢ PIPGRADE", pad + 40, pad + 40);
 
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "800 26px ui-sans-serif, system-ui";
+  ctx.fillText("PIPGRADE", hx + 58, hy + 1);
   ctx.fillStyle = "rgba(255,255,255,0.5)";
-  ctx.font = "400 18px ui-sans-serif, system-ui";
-  ctx.fillText("Pre-trade validation card", pad + 40, pad + 78);
+  ctx.font = "600 14px ui-sans-serif, system-ui";
+  ctx.fillText("VERIFIED EXECUTION CARD", hx + 58, hy + 26);
 
-  // Date right
+  // Date + serial, top right
+  const serialSeed = `${d.asset}-${d.entry}-${d.stop}-${d.tp}-${Date.now()}`;
+  const serial = `PG-${Math.abs(hashCode(serialSeed)).toString(36).toUpperCase().slice(0, 6).padStart(6, "0")}`;
   const date = new Date().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-  ctx.fillStyle = "rgba(255,255,255,0.4)";
-  ctx.font = "400 16px ui-sans-serif, system-ui";
   ctx.textAlign = "right";
-  ctx.fillText(date, W - pad - 40, pad + 50);
+  ctx.fillStyle = "rgba(255,255,255,0.45)";
+  ctx.font = "500 14px ui-sans-serif, system-ui";
+  ctx.fillText(date, W - inner - 34, hy + 4);
+  ctx.font = "600 14px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = "rgba(196,181,253,0.6)";
+  ctx.fillText(serial, W - inner - 34, hy + 24);
   ctx.textAlign = "left";
 
-  // Asset + direction
-  let y = pad + 150;
+  // Grade medallion — the celebratory focal point
+  const medCx = W - inner - 100;
+  const medCy = hy + 110;
+  const medR = 56;
+  ctx.save();
+  ctx.shadowColor = theme.glow;
+  ctx.shadowBlur = 26;
+  const medGrad = ctx.createRadialGradient(medCx, medCy, 4, medCx, medCy, medR);
+  medGrad.addColorStop(0, "rgba(255,255,255,0.16)");
+  medGrad.addColorStop(1, "rgba(255,255,255,0.02)");
+  ctx.beginPath();
+  ctx.arc(medCx, medCy, medR, 0, Math.PI * 2);
+  ctx.fillStyle = medGrad;
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = theme.ring;
+  ctx.stroke();
+  ctx.restore();
   ctx.fillStyle = "#ffffff";
-  ctx.font = "800 64px ui-sans-serif, system-ui";
-  ctx.fillText(d.asset.toUpperCase(), pad + 40, y);
+  ctx.font = "800 44px ui-monospace, Menlo, monospace";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(d.grade, medCx, medCy - 4);
+  ctx.font = "700 12px ui-sans-serif, system-ui";
+  ctx.fillStyle = theme.primary;
+  ctx.fillText(theme.tier, medCx, medCy + 30);
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+
+  // Asset + direction
+  let y = hy + 190;
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "800 60px ui-sans-serif, system-ui";
+  ctx.fillText(d.asset.toUpperCase(), inner + 34, y);
 
   const dirColor = d.direction === "buy" ? "#22c55e" : "#ef4444";
   const dirLabel = d.direction === "buy" ? "LONG" : "SHORT";
   ctx.font = "700 22px ui-sans-serif, system-ui";
   const assetWidth = ctx.measureText(d.asset.toUpperCase()).width;
-  // pill
-  const pillX = pad + 40 + assetWidth + 24;
-  const pillY = y + 18;
+  const pillX = inner + 34 + assetWidth + 24;
+  const pillY = y + 14;
   const pillW = 110;
   const pillH = 38;
   roundRect(ctx, pillX, pillY, pillW, pillH, 19);
@@ -1010,34 +1118,29 @@ function downloadTradeCard(d: TradeCardData) {
   ctx.textBaseline = "top";
 
   // Verdict banner
-  y += 110;
+  y += 100;
   const verdictMap: Record<Verdict, { label: string; color: string }> = {
     valid: { label: "✓  VALID SETUP", color: "#22c55e" },
     adjust: { label: "⚠  ADJUST BEFORE ENTRY", color: "#f59e0b" },
     no: { label: "✕  DO NOT TAKE THIS TRADE", color: "#ef4444" },
   };
   const v = verdictMap[d.verdict];
-  roundRect(ctx, pad + 40, y, W - pad * 2 - 80, 90, 16);
+  roundRect(ctx, inner + 34, y, W - inner * 2 - 68, 88, 16);
   ctx.fillStyle = `${v.color}22`;
   ctx.fill();
   ctx.strokeStyle = `${v.color}66`;
   ctx.lineWidth = 1.5;
   ctx.stroke();
   ctx.fillStyle = v.color;
-  ctx.font = "800 32px ui-sans-serif, system-ui";
+  ctx.font = "800 30px ui-sans-serif, system-ui";
   ctx.textBaseline = "middle";
-  ctx.fillText(v.label, pad + 70, y + 45);
-  // grade right
-  ctx.font = "800 40px ui-monospace, Menlo, monospace";
-  ctx.textAlign = "right";
-  ctx.fillText(d.grade, W - pad - 70, y + 45);
-  ctx.textAlign = "left";
+  ctx.fillText(v.label, inner + 64, y + 44);
   ctx.textBaseline = "top";
 
   // Suggested size block
-  y += 130;
-  roundRect(ctx, pad + 40, y, W - pad * 2 - 80, 130, 18);
-  const sizeGrad = ctx.createLinearGradient(0, y, W, y + 130);
+  y += 126;
+  roundRect(ctx, inner + 34, y, W - inner * 2 - 68, 126, 18);
+  const sizeGrad = ctx.createLinearGradient(0, y, W, y + 126);
   sizeGrad.addColorStop(0, "rgba(168,85,247,0.25)");
   sizeGrad.addColorStop(1, "rgba(236,72,153,0.06)");
   ctx.fillStyle = sizeGrad;
@@ -1045,14 +1148,14 @@ function downloadTradeCard(d: TradeCardData) {
   ctx.strokeStyle = "rgba(196,181,253,0.4)";
   ctx.stroke();
   ctx.fillStyle = "#c4b5fd";
-  ctx.font = "600 16px ui-sans-serif, system-ui";
-  ctx.fillText("SUGGESTED EXECUTION SIZE", pad + 70, y + 22);
+  ctx.font = "600 15px ui-sans-serif, system-ui";
+  ctx.fillText("SUGGESTED EXECUTION SIZE", inner + 64, y + 20);
   ctx.fillStyle = "#ffffff";
-  ctx.font = "800 56px ui-monospace, Menlo, monospace";
-  ctx.fillText(d.sizeText, pad + 70, y + 50);
+  ctx.font = "800 52px ui-monospace, Menlo, monospace";
+  ctx.fillText(d.sizeText, inner + 64, y + 48);
 
   // Stats grid
-  y += 170;
+  y += 164;
   const stats: { label: string; value: string; color?: string }[] = [
     { label: "ENTRY", value: d.entry },
     { label: "STOP LOSS", value: d.stop, color: "#ef4444" },
@@ -1065,12 +1168,13 @@ function downloadTradeCard(d: TradeCardData) {
   ];
 
   const cols = 2;
-  const cellW = (W - pad * 2 - 80 - 20) / cols;
-  const cellH = 100;
+  const gridW = W - inner * 2 - 68;
+  const cellW = (gridW - 20) / cols;
+  const cellH = 96;
   stats.forEach((stat, i) => {
     const col = i % cols;
     const row = Math.floor(i / cols);
-    const cx = pad + 40 + col * (cellW + 20);
+    const cx = inner + 34 + col * (cellW + 20);
     const cy = y + row * (cellH + 14);
     roundRect(ctx, cx, cy, cellW, cellH, 14);
     ctx.fillStyle = "rgba(255,255,255,0.04)";
@@ -1079,22 +1183,41 @@ function downloadTradeCard(d: TradeCardData) {
     ctx.lineWidth = 1;
     ctx.stroke();
     ctx.fillStyle = "rgba(255,255,255,0.5)";
-    ctx.font = "600 13px ui-sans-serif, system-ui";
-    ctx.fillText(stat.label, cx + 20, cy + 20);
+    ctx.font = "600 12px ui-sans-serif, system-ui";
+    ctx.fillText(stat.label, cx + 18, cy + 18);
     ctx.fillStyle = stat.color ?? "#ffffff";
-    ctx.font = "700 26px ui-monospace, Menlo, monospace";
-    ctx.fillText(stat.value, cx + 20, cy + 48);
+    ctx.font = "700 24px ui-monospace, Menlo, monospace";
+    ctx.fillText(stat.value, cx + 18, cy + 45);
   });
 
-  // Footer
-  const footerY = H - pad - 60;
-  ctx.fillStyle = "rgba(255,255,255,0.35)";
-  ctx.font = "400 16px ui-sans-serif, system-ui";
-  ctx.fillText(`Balance ${d.balanceText} · Risk ${d.riskPctText}`, pad + 40, footerY);
+  // Footer — foil divider, seal, serial, tagline
+  const footerRuleY = H - inner - 96;
+  const ruleGrad = ctx.createLinearGradient(inner + 34, 0, W - inner - 34, 0);
+  ruleGrad.addColorStop(0, "rgba(255,255,255,0)");
+  ruleGrad.addColorStop(0.5, theme.ring);
+  ruleGrad.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.strokeStyle = ruleGrad;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(inner + 34, footerRuleY);
+  ctx.lineTo(W - inner - 34, footerRuleY);
+  ctx.stroke();
+
+  const footerY = H - inner - 66;
+  ctx.fillStyle = "rgba(255,255,255,0.4)";
+  ctx.font = "500 15px ui-sans-serif, system-ui";
+  ctx.fillText(`Balance ${d.balanceText} · Risk ${d.riskPctText} · ${serial}`, inner + 34, footerY);
+
   ctx.textAlign = "right";
+  ctx.fillStyle = theme.primary;
+  ctx.font = "700 15px ui-sans-serif, system-ui";
+  ctx.fillText("✓ PIPGRADE VERIFIED", W - inner - 34, footerY);
+  ctx.textAlign = "left";
+
   ctx.fillStyle = "rgba(196,181,253,0.7)";
-  ctx.font = "600 16px ui-sans-serif, system-ui";
-  ctx.fillText("Every trade deserves a grade before it deserves your capital.", W - pad - 40, footerY);
+  ctx.font = "600 15px ui-sans-serif, system-ui";
+  ctx.textAlign = "center";
+  ctx.fillText("Every trade deserves a grade before it deserves your capital.", W / 2, footerY + 26);
   ctx.textAlign = "left";
 
   canvas.toBlob((blob) => {
