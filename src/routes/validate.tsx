@@ -760,9 +760,9 @@ function TradePlanChecker() {
         <ManualSaveOverlay
           url={manualSaveUrl}
           onClose={() => {
-            URL.revokeObjectURL(manualSaveUrl);
             setManualSaveUrl(null);
           }}
+
         />
       )}
     </div>
@@ -1965,9 +1965,17 @@ async function saveOrShareTradeCard(
   }
 
   // Touch device with no file-sharing support: show it full-screen so the
-  // user can long-press -> Save Image. Caller owns revoking this URL once
-  // the overlay closes.
-  onManualSaveNeeded(url);
+  // user can long-press -> Save Image. iOS Safari's long-press menu only
+  // offers "Save to Photos" for data:/http(s): image URLs -- blob: URLs
+  // silently do nothing -- so convert to a data URL for the overlay.
+  URL.revokeObjectURL(url);
+  const dataUrl: string = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error ?? new Error("FileReader failed"));
+    reader.readAsDataURL(blob);
+  });
+  onManualSaveNeeded(dataUrl);
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
