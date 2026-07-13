@@ -576,6 +576,30 @@ function TradePlanChecker() {
                     <p className="mt-1.5 text-[11px] text-muted-foreground">Value per pip/point for 1 lot, contract, or unit.</p>
                   </div>
                 )}
+                {s.assetType === "commodities" && (
+                  <div className="mt-4 rounded-md border border-border/40 bg-background/40 p-3">
+                    <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-foreground/70">
+                      Broker settings (XAUUSD CFD)
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="Contract size" hint="per 1 lot">
+                        <Input value={s.contractSize} onChange={(e) => set("contractSize", e.target.value)} inputMode="decimal" className="font-mono" />
+                      </Field>
+                      <Field label="Point size">
+                        <Input value={s.pointSize} onChange={(e) => set("pointSize", e.target.value)} inputMode="decimal" className="font-mono" />
+                      </Field>
+                      <Field label="Minimum lot">
+                        <Input value={s.minLot} onChange={(e) => set("minLot", e.target.value)} inputMode="decimal" className="font-mono" />
+                      </Field>
+                      <Field label="Lot step">
+                        <Input value={s.lotStep} onChange={(e) => set("lotStep", e.target.value)} inputMode="decimal" className="font-mono" />
+                      </Field>
+                    </div>
+                    <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                      Size is rounded down to the nearest lot step so realized risk never exceeds your selected %.
+                    </p>
+                  </div>
+                )}
                 <p className="mt-3 rounded-md border border-border/40 bg-background/40 p-2.5 text-[11px] leading-relaxed text-muted-foreground">
                   {ASSET_TYPES.find((a) => a.value === s.assetType)!.hint}
                   {s.sizingMode === "quick" && (
