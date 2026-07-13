@@ -438,16 +438,18 @@ function TradePlanChecker() {
     setIsGenerating(true);
     setTimeout(async () => {
       try {
-        // Enrich move-to-stop / move-to-target with the $ impact so the card
-        // matches the "0.05% · 200 pts · $10.00" format from the mockup.
-        const cardMoveStop =
-          result.dollarRisk !== null && moveStopText !== dash
+        // Prefer the commodity-style "$X.XX · N pts" distance strings; fall
+        // back to the % · pips string for non-commodity assets.
+        const cardStopDistance =
+          stopDistanceText ??
+          (result.dollarRisk !== null && moveStopText !== dash
             ? `${moveStopText} · ${fmtMoney(result.dollarRisk)}`
-            : moveStopText;
-        const cardMoveTarget =
-          result.reward !== null && moveTargetText !== dash
+            : moveStopText);
+        const cardTargetDistance =
+          targetDistanceText ??
+          (result.reward !== null && moveTargetText !== dash
             ? `${moveTargetText} · ${fmtMoney(result.reward)}`
-            : moveTargetText;
+            : moveTargetText);
 
         // "How size is calculated" one-liner (commodities only) mirrors the
         // in-app expandable trace so the shared card is self-explanatory.
@@ -473,6 +475,15 @@ function TradePlanChecker() {
               ? "Reduce size or improve R:R before entry"
               : "Setup does not meet execution criteria";
 
+        const cardBreakdown: TradeCardBreakdown | null = breakdown
+          ? {
+              sizeText: `${fmtLot(breakdown.size)} lots`,
+              qtyText: `${fmtQty(breakdown.underlyingQty)} ${breakdown.unit}${breakdown.label ? ` ${breakdown.label}` : ""}`,
+              perPointText: `$${breakdown.perPointMove.toFixed(2)} per ${breakdown.pointSize === 0.01 ? "$0.01" : `$${breakdown.pointSize}`} move`,
+              perUnitText: `$${breakdown.perUnitMove.toFixed(2)} per $1.00 move`,
+            }
+          : null;
+
         const blob = await renderTradeCardBlob({
           asset: s.asset || "UNNAMED",
           direction: s.direction,
@@ -489,10 +500,11 @@ function TradePlanChecker() {
           rewardText,
           rrText,
           sizeText,
-          moveStopText: cardMoveStop,
-          moveTargetText: cardMoveTarget,
+          stopDistanceText: cardStopDistance,
+          targetDistanceText: cardTargetDistance,
           howCalcText,
           validSubText,
+          breakdown: cardBreakdown,
         });
         const filename = `pipgrade-${(s.asset || "setup").toLowerCase().replace(/\s+/g, "-")}-${Date.now()}.png`;
         await saveOrShareTradeCard(blob, filename, setManualSaveUrl);
