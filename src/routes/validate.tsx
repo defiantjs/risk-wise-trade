@@ -1675,7 +1675,8 @@ function renderTradeCardBlob(d: TradeCardData): Promise<Blob> {
     no: { label: "✕  DO NOT TAKE THIS TRADE", color: "#ef4444" },
   };
   const v = verdictMap[d.verdict];
-  roundRect(ctx, inner + 34, y, W - inner * 2 - 68, 88, 16);
+  const bannerH = 96;
+  roundRect(ctx, inner + 34, y, W - inner * 2 - 68, bannerH, 16);
   ctx.fillStyle = `${v.color}22`;
   ctx.fill();
   ctx.strokeStyle = `${v.color}66`;
@@ -1683,9 +1684,13 @@ function renderTradeCardBlob(d: TradeCardData): Promise<Blob> {
   ctx.stroke();
   ctx.fillStyle = v.color;
   ctx.font = "800 30px ui-sans-serif, system-ui";
-  ctx.textBaseline = "middle";
-  ctx.fillText(v.label, inner + 64, y + 44);
   ctx.textBaseline = "top";
+  ctx.fillText(v.label, inner + 64, y + 20);
+  ctx.fillStyle = "rgba(255,255,255,0.6)";
+  ctx.font = "500 15px ui-sans-serif, system-ui";
+  ctx.fillText(d.validSubText, inner + 64, y + 58);
+  y = y + bannerH - 88; // keep downstream layout stable
+
 
   // Suggested size block
   y += 126;
