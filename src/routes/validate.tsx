@@ -197,10 +197,20 @@ function TradePlanChecker() {
     const reward = dollarRisk !== null && rr !== null ? safe(dollarRisk * rr) : null;
     const moveToStopPct = entry! > 0 ? safe((stopDist / entry!) * 100) : null;
     const moveToTargetPct = entry! > 0 && targetDist !== null ? safe((targetDist / entry!) * 100) : null;
-    const suggestedSize =
+    const rawSize =
       pipValue !== null && pipValue > 0 && stopDist > 0 && dollarRisk !== null
         ? safe(dollarRisk / (stopDist * pipValue))
         : null;
+    // For commodity CFDs, snap DOWN to the broker's lot step so realized
+    // risk never exceeds the selected %. Below minLot → not tradeable.
+    const lotStepN = num(s.lotStep);
+    const minLotN = num(s.minLot);
+    let suggestedSize = rawSize;
+    if (s.assetType === "commodities" && rawSize !== null && lotStepN && lotStepN > 0) {
+      const snapped = Math.floor(rawSize / lotStepN) * lotStepN;
+      const min = minLotN && minLotN > 0 ? minLotN : 0;
+      suggestedSize = snapped >= min ? Math.round(snapped * 1e6) / 1e6 : 0;
+    }
 
     if (!ready) {
       return {
