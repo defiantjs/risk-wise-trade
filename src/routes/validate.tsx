@@ -541,6 +541,7 @@ function TradePlanChecker() {
                 {result.ready ? (
                   <ResultsView
                     asset={s.asset}
+                    assetType={s.assetType}
                     direction={s.direction}
                     riskText={riskText}
                     rewardText={rewardText}
@@ -759,10 +760,10 @@ function gradeColor(grade: Grade) {
 }
 
 function ResultsView({
-  asset, direction, riskText, rewardText, rrText, grade, verdict,
+  asset, assetType, direction, riskText, rewardText, rrText, grade, verdict,
   coaching, warnings, moveToStopText, moveToTargetText, sizeText, sizeNote, riskConfirmText, onSave,
 }: {
-  asset: string; direction: Direction; riskText: string; rewardText: string; rrText: string;
+  asset: string; assetType: AssetType; direction: Direction; riskText: string; rewardText: string; rrText: string;
   grade: Grade; verdict: Verdict; coaching: string; warnings: string[];
   moveToStopText: string; moveToTargetText: string; sizeText: string;
   sizeNote: string | null; riskConfirmText: string | null; onSave: () => void;
@@ -828,22 +829,7 @@ function ResultsView({
       </div>
 
       {/* Reality check */}
-      <div className="rounded-lg border border-border/60 bg-background/40 p-3">
-        <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-foreground/80">Before you execute</div>
-        <ul className="space-y-1.5 text-xs text-foreground/85">
-          {[
-            "Does market structure support this trade?",
-            "Is DXY / macro context aligned?",
-            "Is there high-impact news nearby?",
-            "Is this part of your plan or impulsive?",
-          ].map((q) => (
-            <li key={q} className="flex items-start gap-2">
-              <span className="mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-primary/70" />
-              <span>{q}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
+      <ExecutionChecklist key={assetType} items={checklistFor(assetType, asset)} />
 
       {/* Warnings */}
       {warnings.length > 0 && (
@@ -868,6 +854,93 @@ function ResultsView({
         <span>Keep taking setups like this &mdash; see where it leads</span>
         <span className="font-semibold text-primary">Growth Planner &rarr;</span>
       </Link>
+    </div>
+  );
+}
+
+/* ---------- Before-you-execute checklist ----------
+ * Deliberately static, not data-fed: this is a discipline ritual, not a
+ * market-data product. Wiring in live DXY levels / news feeds / earnings
+ * calendars is real System Alignment (roadmap V5) — it needs a backend and
+ * a data license, and blurs into "signal service" territory the product
+ * explicitly isn't. What's cheap and worth doing now: make the question
+ * relevant to the instrument, make it something the trader actually
+ * confirms (checkbox, not just a bullet to read), and — where a stable,
+ * well-known public reference exists — link out to it instead of trying to
+ * embed it.
+ */
+type ChecklistItem = { text: string; href?: string };
+
+function checklistFor(assetType: AssetType, asset: string): ChecklistItem[] {
+  const contextItem: ChecklistItem = (() => {
+    switch (assetType) {
+      case "forex":
+        return { text: "Is DXY / macro context aligned?", href: "https://www.forexfactory.com/calendar" };
+      case "commodities":
+        return { text: "Is there a macro or supply event driving this move?", href: "https://www.forexfactory.com/calendar" };
+      case "indices":
+        return { text: "Is there a central bank decision or macro print nearby?", href: "https://www.forexfactory.com/calendar" };
+      case "crypto":
+        return { text: "Is there a major protocol, regulatory, or macro event nearby?" };
+      case "stocks":
+        return {
+          text: "Is there an earnings report or company catalyst nearby?",
+          href: asset.trim() ? `https://finance.yahoo.com/quote/${encodeURIComponent(asset.trim().toUpperCase())}` : undefined,
+        };
+    }
+  })();
+
+  return [
+    { text: "Does market structure support this trade?" },
+    contextItem,
+    { text: "Is there high-impact news nearby?" },
+    { text: "Is this part of your plan or impulsive?" },
+  ];
+}
+
+function ExecutionChecklist({ items }: { items: ChecklistItem[] }) {
+  const [checked, setChecked] = useState<boolean[]>(() => items.map(() => false));
+  const doneCount = checked.filter(Boolean).length;
+
+  const toggle = (i: number) => setChecked((prev) => prev.map((c, idx) => (idx === i ? !c : c)));
+
+  return (
+    <div className="rounded-lg border border-border/60 bg-background/40 p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <div className="text-xs font-semibold uppercase tracking-wider text-foreground/80">Before you execute</div>
+        <div className="text-[10px] text-muted-foreground">{doneCount}/{items.length}</div>
+      </div>
+      <ul className="space-y-1.5 text-xs text-foreground/85">
+        {items.map((item, i) => (
+          <li key={item.text} className="flex items-start gap-2">
+            <button
+              type="button"
+              onClick={() => toggle(i)}
+              aria-pressed={checked[i]}
+              aria-label={item.text}
+              className={cn(
+                "mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border text-[10px] font-bold transition-colors",
+                checked[i]
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border/60 bg-secondary/30 text-transparent"
+              )}
+            >
+              &#10003;
+            </button>
+            <span className={cn("flex-1", checked[i] && "text-foreground/50 line-through")}>{item.text}</span>
+            {item.href && (
+              <a
+                href={item.href}
+                target="_blank"
+                rel="noreferrer"
+                className="flex-shrink-0 text-[10px] font-medium text-primary hover:underline"
+              >
+                Check &#8599;
+              </a>
+            )}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
