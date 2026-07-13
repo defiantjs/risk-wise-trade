@@ -301,10 +301,12 @@ function TradePlanChecker() {
   const moneyOrDash = (n: number | null) => (n === null ? dash : fmtMoney(n));
   const rrText = result.ready && result.rr !== null ? `${result.rr.toFixed(2)} : 1` : dash;
 
-  // Pip / point distance — derived from asset type and pair name
+  // Pip / point distance — derived from asset type and pair name.
+  // Commodities use the broker's editable point size (default 0.01 for XAUUSD).
+  const brokerPointN = num(s.pointSize);
   const pipSize = (() => {
     if (s.assetType === "forex") return /JPY/i.test(s.asset) ? 0.01 : 0.0001;
-    if (s.assetType === "commodities") return 0.01; // gold/silver/oil quoted to the cent on most CFDs
+    if (s.assetType === "commodities") return brokerPointN && brokerPointN > 0 ? brokerPointN : 0.01;
     if (s.assetType === "stocks") return 0.01;
     return 1; // indices, crypto
   })();
