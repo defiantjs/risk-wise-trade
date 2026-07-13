@@ -438,6 +438,40 @@ function TradePlanChecker() {
     setIsGenerating(true);
     setTimeout(async () => {
       try {
+        // Enrich move-to-stop / move-to-target with the $ impact so the card
+        // matches the "0.05% · 200 pts · $10.00" format from the mockup.
+        const cardMoveStop =
+          result.dollarRisk !== null && moveStopText !== dash
+            ? `${moveStopText} · ${fmtMoney(result.dollarRisk)}`
+            : moveStopText;
+        const cardMoveTarget =
+          result.reward !== null && moveTargetText !== dash
+            ? `${moveTargetText} · ${fmtMoney(result.reward)}`
+            : moveTargetText;
+
+        // "How size is calculated" one-liner (commodities only) mirrors the
+        // in-app expandable trace so the shared card is self-explanatory.
+        const howCalcText =
+          howCalculated && stopPips !== null && suggestedSizeVal !== null
+            ? `${fmtMoney(howCalculated.balance)} balance × ${howCalculated.riskPct}% risk = ${fmtMoney(
+                howCalculated.dollarRisk
+              )} max risk. Stop distance (${fmtPips(stopPips)} pts) × ${fmtMoney(
+                howCalculated.riskPerLot / (howCalculated.size > 0 ? howCalculated.size / howCalculated.size : 1) / (howCalculated.stopDist / (brokerPointN || 0.01))
+              )} per pt (${suggestedSizeVal.toFixed(2)} lot) = ${fmtMoney(howCalculated.dollarRisk)} risk.`
+            : null;
+
+        const riskSubText =
+          balanceN !== null && riskPctN !== null
+            ? `(${riskPctN}% of ${fmtMoney(balanceN)})`
+            : null;
+
+        const validSubText =
+          result.verdict === "valid"
+            ? "Trend aligned · Risk managed · Execution approved"
+            : result.verdict === "adjust"
+              ? "Reduce size or improve R:R before entry"
+              : "Setup does not meet execution criteria";
+
         const blob = await renderTradeCardBlob({
           asset: s.asset || "UNNAMED",
           direction: s.direction,
@@ -450,11 +484,14 @@ function TradePlanChecker() {
           balanceText: fmtMoney(balanceN!),
           riskPctText: `${s.riskPct}%`,
           riskText,
+          riskSubText,
           rewardText,
           rrText,
           sizeText,
-          moveStopText,
-          moveTargetText,
+          moveStopText: cardMoveStop,
+          moveTargetText: cardMoveTarget,
+          howCalcText,
+          validSubText,
         });
         const filename = `pipgrade-${(s.asset || "setup").toLowerCase().replace(/\s+/g, "-")}-${Date.now()}.png`;
         await saveOrShareTradeCard(blob, filename, setManualSaveUrl);
@@ -465,6 +502,7 @@ function TradePlanChecker() {
       }
     }, 550);
   };
+
 
   // Growth Planner handoff — carry this validated trade's numbers over as a
   // starting point rather than making the trader retype them. Plain query
