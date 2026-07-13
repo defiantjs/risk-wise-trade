@@ -760,9 +760,9 @@ function TradePlanChecker() {
         <ManualSaveOverlay
           url={manualSaveUrl}
           onClose={() => {
-            URL.revokeObjectURL(manualSaveUrl);
             setManualSaveUrl(null);
           }}
+
         />
       )}
     </div>
