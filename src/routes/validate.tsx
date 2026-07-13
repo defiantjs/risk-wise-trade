@@ -1239,6 +1239,9 @@ function ResultsView({
         ) : null}
       </div>
 
+      {breakdown && <PositionBreakdown b={breakdown} />}
+      {howCalculated && <HowSizeCalculated h={howCalculated} />}
+
       {/* 3. Risk / Reward / R:R */}
       <div className="grid grid-cols-3 gap-2">
         <Stat icon={<AlertTriangle className="h-3.5 w-3.5" />} label="Risk" value={riskText} tone="danger" />
@@ -1246,8 +1249,8 @@ function ResultsView({
         <Stat icon={<Scale className="h-3.5 w-3.5" />} label="R : R" value={rrText} tone="neutral" />
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <Stat label="Move to stop" value={moveToStopText} tone="neutral" />
-        <Stat label="Move to target" value={moveToTargetText} tone="neutral" />
+        <Stat label={stopDistanceText ? "Stop distance" : "Move to stop"} value={stopDistanceText ?? moveToStopText} tone="neutral" />
+        <Stat label={targetDistanceText ? "Target distance" : "Move to target"} value={targetDistanceText ?? moveToTargetText} tone="neutral" />
       </div>
 
       <WhyThisTrade verdict={verdict} reasons={reasons} />
