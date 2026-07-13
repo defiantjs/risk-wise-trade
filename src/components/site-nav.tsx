@@ -3,16 +3,16 @@ import { Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const LINKS = [
-  { to: "/validate", label: "Validate a Trade" },
-  { to: "/growth", label: "Growth Planner" },
-  { to: "/scaling", label: "Scaling Plan" },
+  { to: "/validate", label: "Validate", fullLabel: "Validate a Trade" },
+  { to: "/growth", label: "Growth", fullLabel: "Growth Planner" },
+  { to: "/scaling", label: "Scaling", fullLabel: "Scaling Plan" },
 ];
 
 export function SiteNav() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   return (
-    <header className="mx-auto flex max-w-6xl items-center justify-between px-4 py-6 sm:px-6">
+    <header className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-6 sm:px-6">
       <Link to="/" className="flex items-center gap-3">
         <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary/30 to-primary/5 text-primary ring-1 ring-primary/40 shadow-[0_0_24px_-6px_var(--primary)]">
           <Activity className="h-5 w-5" />
@@ -26,13 +26,14 @@ export function SiteNav() {
             key={l.to}
             to={l.to}
             className={cn(
-              "rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors sm:text-sm",
+              "rounded-full px-2.5 py-1.5 text-xs font-medium transition-colors sm:px-3.5 sm:text-sm",
               pathname === l.to
                 ? "bg-primary text-primary-foreground shadow"
                 : "text-muted-foreground hover:text-foreground"
             )}
           >
-            {l.label}
+            <span className="sm:hidden">{l.label}</span>
+            <span className="hidden sm:inline">{l.fullLabel}</span>
           </Link>
         ))}
       </nav>

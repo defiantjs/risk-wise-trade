@@ -549,7 +549,7 @@ function TradePlanChecker() {
 
           {/* Results */}
           <div className="lg:col-span-2">
-            <Card className="glass sticky top-20 border-primary/25 shadow-2xl shadow-primary/10 ring-1 ring-primary/20">
+            <Card className="glass border-primary/25 shadow-2xl shadow-primary/10 ring-1 ring-primary/20 lg:sticky lg:top-20">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-base font-semibold">Execution Report</CardTitle>
@@ -945,9 +945,9 @@ function ExecutionConfirmation({
       </div>
       <ul className="space-y-2">
         {CONFIRMATION_ITEMS.map((text, i) => (
-          <li key={text} className="flex items-center justify-between gap-3 text-xs">
+          <li key={text} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-xs">
             <span className="text-foreground/85">{text}</span>
-            <div className="flex flex-shrink-0 items-center gap-1">
+            <div className="flex flex-shrink-0 items-center gap-1.5">
               {(Object.keys(TRI_CONFIG) as TriState[]).map((tri) => (
                 <button
                   key={tri}
@@ -956,7 +956,7 @@ function ExecutionConfirmation({
                   aria-pressed={state[i] === tri}
                   onClick={() => onChange(i, tri)}
                   className={cn(
-                    "flex h-6 w-6 items-center justify-center rounded-full border transition-all duration-200",
+                    "flex h-8 w-8 items-center justify-center rounded-full border transition-all duration-200",
                     state[i] === tri
                       ? cn("scale-110 border-transparent text-white", TRI_CONFIG[tri].dot, TRI_CONFIG[tri].glow)
                       : "border-border/50 bg-secondary/30 text-muted-foreground/40 hover:text-muted-foreground"
