@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, TrendingUp, Wallet } from "lucide-react";
 import {
   Area,
@@ -41,6 +41,26 @@ function GrowthPlanner() {
   const [s, setS] = useState(DEFAULTS);
   const set = <K extends keyof typeof DEFAULTS>(k: K, v: (typeof DEFAULTS)[K]) =>
     setS((prev) => ({ ...prev, [k]: v }));
+
+  // Handoff from a validated trade on /validate: carry balance / risk / R:R
+  // over as a starting point instead of making the trader retype them.
+  // Plain query params, read client-side only (SSR has no window/location).
+  const [handedOff, setHandedOff] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const balance = params.get("balance");
+    const risk = params.get("risk");
+    const rr = params.get("rr");
+    if (!balance && !risk && !rr) return;
+    setS((prev) => ({
+      ...prev,
+      balance: balance ?? prev.balance,
+      riskPct: risk ?? prev.riskPct,
+      avgRR: rr ?? prev.avgRR,
+    }));
+    setHandedOff(true);
+  }, []);
 
   const model = useMemo(() => {
     const balance = num(s.balance);
@@ -98,6 +118,11 @@ function GrowthPlanner() {
             If you keep taking only validated setups at this quality and consistency, here&apos;s where the
             system goes. This projects your <em>process</em>, not a promise.
           </p>
+          {handedOff && (
+            <p className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-[11px] font-medium text-primary">
+              Balance, risk, and R:R carried over from your validated trade &mdash; adjust as needed.
+            </p>
+          )}
         </header>
 
         <div className="grid gap-6 lg:grid-cols-5">
