@@ -42,11 +42,19 @@ const ASSET_TYPES: {
   hint: string;
 }[] = [
   { value: "forex", label: "Forex", pipValue: "10", unit: "lots", hint: "Standard lot ≈ $10/pip on USD-quoted pairs." },
-  { value: "commodities", label: "Metals & Energy", pipValue: "1", unit: "contracts", hint: "Gold/Silver ≈ $1 per $0.01 move; Oil (WTI/Brent) ≈ $1 per $0.01 move on a standard CFD contract. Verify contract size with broker." },
+  { value: "commodities", label: "Metals & Energy", pipValue: "100", unit: "lots", hint: "Gold CFD: 1.00 lot = 100 oz. $1.00 price move at 1 lot = $100. Adjust broker settings if different." },
   { value: "indices", label: "Indices", pipValue: "1", unit: "contracts", hint: "Typical CFD (NAS100, US500, US30…) ≈ $1 per point per contract. Verify with broker." },
   { value: "crypto", label: "Crypto", pipValue: "1", unit: "units", hint: "Spot crypto ≈ $1 per $1 move per 1 unit." },
   { value: "stocks", label: "Stocks / ETFs", pipValue: "1", unit: "shares", hint: "$1 move per share = $1 P&L per share. Applies to ETFs (SPY, QQQ…) too." },
 ];
+
+// Commodity CFD broker defaults (XAUUSD standard). Editable by the trader.
+const COMMODITY_BROKER_DEFAULTS = {
+  contractSize: "100", // 1 lot = 100 oz
+  pointSize: "0.01",
+  minLot: "0.01",
+  lotStep: "0.01",
+};
 
 // Lightweight symbol sniffing so the sizing math doesn't silently stay on
 // Forex defaults when someone types an index, commodity, or stock into the
@@ -82,6 +90,11 @@ const DEFAULTS = {
   pipValue: "10",
   unitLabel: "lots",
   sizingMode: "quick" as SizingMode,
+  // Broker settings (used for commodity CFDs; hidden for other asset types)
+  contractSize: COMMODITY_BROKER_DEFAULTS.contractSize,
+  pointSize: COMMODITY_BROKER_DEFAULTS.pointSize,
+  minLot: COMMODITY_BROKER_DEFAULTS.minLot,
+  lotStep: COMMODITY_BROKER_DEFAULTS.lotStep,
 };
 
 function num(v: string): number | null {
@@ -184,10 +197,20 @@ function TradePlanChecker() {
     const reward = dollarRisk !== null && rr !== null ? safe(dollarRisk * rr) : null;
     const moveToStopPct = entry! > 0 ? safe((stopDist / entry!) * 100) : null;
     const moveToTargetPct = entry! > 0 && targetDist !== null ? safe((targetDist / entry!) * 100) : null;
-    const suggestedSize =
+    const rawSize =
       pipValue !== null && pipValue > 0 && stopDist > 0 && dollarRisk !== null
         ? safe(dollarRisk / (stopDist * pipValue))
         : null;
+    // For commodity CFDs, snap DOWN to the broker's lot step so realized
+    // risk never exceeds the selected %. Below minLot → not tradeable.
+    const lotStepN = num(s.lotStep);
+    const minLotN = num(s.minLot);
+    let suggestedSize = rawSize;
+    if (s.assetType === "commodities" && rawSize !== null && lotStepN && lotStepN > 0) {
+      const snapped = Math.floor(rawSize / lotStepN) * lotStepN;
+      const min = minLotN && minLotN > 0 ? minLotN : 0;
+      suggestedSize = snapped >= min ? Math.round(snapped * 1e6) / 1e6 : 0;
+    }
 
     if (!ready) {
       return {
@@ -278,10 +301,12 @@ function TradePlanChecker() {
   const moneyOrDash = (n: number | null) => (n === null ? dash : fmtMoney(n));
   const rrText = result.ready && result.rr !== null ? `${result.rr.toFixed(2)} : 1` : dash;
 
-  // Pip / point distance — derived from asset type and pair name
+  // Pip / point distance — derived from asset type and pair name.
+  // Commodities use the broker's editable point size (default 0.01 for XAUUSD).
+  const brokerPointN = num(s.pointSize);
   const pipSize = (() => {
     if (s.assetType === "forex") return /JPY/i.test(s.asset) ? 0.01 : 0.0001;
-    if (s.assetType === "commodities") return 0.01; // gold/silver/oil quoted to the cent on most CFDs
+    if (s.assetType === "commodities") return brokerPointN && brokerPointN > 0 ? brokerPointN : 0.01;
     if (s.assetType === "stocks") return 0.01;
     return 1; // indices, crypto
   })();
@@ -313,6 +338,49 @@ function TradePlanChecker() {
       : dash;
   const riskText = dollarRiskVal !== null ? moneyOrDash(dollarRiskVal) : dash;
   const rewardText = result.ready ? moneyOrDash(result.reward) : dash;
+
+  // Commodity CFD "Position Breakdown" — underlying quantity and per-move P&L.
+  const contractSizeN = num(s.contractSize);
+  const isCommodity = s.assetType === "commodities";
+  const commodityLabel = /XAU|GOLD/i.test(s.asset) ? "Gold" : /XAG|SILVER/i.test(s.asset) ? "Silver" : /WTI|BRENT|OIL/i.test(s.asset) ? "Oil" : "";
+  const commodityUnit = /XAU|XAG|GOLD|SILVER/i.test(s.asset) || !s.asset.trim() ? "oz" : "units";
+  const breakdown =
+    isCommodity && suggestedSizeVal !== null && suggestedSizeVal > 0 && contractSizeN && contractSizeN > 0 && brokerPointN && brokerPointN > 0
+      ? {
+          size: suggestedSizeVal,
+          underlyingQty: suggestedSizeVal * contractSizeN,
+          unit: commodityUnit,
+          label: commodityLabel,
+          perPointMove: suggestedSizeVal * contractSizeN * brokerPointN, // $ per 1 point (e.g. $0.01)
+          perUnitMove: suggestedSizeVal * contractSizeN,                  // $ per $1.00
+          pointSize: brokerPointN,
+        }
+      : null;
+
+  // "How size was calculated" trace (commodities only, when all inputs present).
+  const howCalculated =
+    isCommodity && balanceN !== null && riskPctN !== null && dollarRiskVal !== null && stopDistRaw !== null && contractSizeN && contractSizeN > 0
+      ? {
+          balance: balanceN,
+          riskPct: riskPctN,
+          dollarRisk: dollarRiskVal,
+          stopDist: stopDistRaw,
+          contractSize: contractSizeN,
+          riskPerLot: stopDistRaw * contractSizeN,
+          size: suggestedSizeVal ?? 0,
+          unit: commodityUnit,
+        }
+      : null;
+
+  // Distance in $ and points (commodities).
+  const stopDistanceText =
+    isCommodity && stopDistRaw !== null && stopPips !== null
+      ? `$${stopDistRaw.toFixed(2)} · ${fmtPips(stopPips)} pts`
+      : null;
+  const targetDistanceText =
+    isCommodity && targetDistRaw !== null && targetPips !== null
+      ? `$${targetDistRaw.toFixed(2)} · ${fmtPips(targetPips)} pts`
+      : null;
 
   // Per-field validation for sizing
   const checks: { label: string; ok: boolean; msg?: string }[] = [
@@ -508,6 +576,30 @@ function TradePlanChecker() {
                     <p className="mt-1.5 text-[11px] text-muted-foreground">Value per pip/point for 1 lot, contract, or unit.</p>
                   </div>
                 )}
+                {s.assetType === "commodities" && (
+                  <div className="mt-4 rounded-md border border-border/40 bg-background/40 p-3">
+                    <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-foreground/70">
+                      Broker settings (XAUUSD CFD)
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="Contract size" hint="per 1 lot">
+                        <Input value={s.contractSize} onChange={(e) => set("contractSize", e.target.value)} inputMode="decimal" className="font-mono" />
+                      </Field>
+                      <Field label="Point size">
+                        <Input value={s.pointSize} onChange={(e) => set("pointSize", e.target.value)} inputMode="decimal" className="font-mono" />
+                      </Field>
+                      <Field label="Minimum lot">
+                        <Input value={s.minLot} onChange={(e) => set("minLot", e.target.value)} inputMode="decimal" className="font-mono" />
+                      </Field>
+                      <Field label="Lot step">
+                        <Input value={s.lotStep} onChange={(e) => set("lotStep", e.target.value)} inputMode="decimal" className="font-mono" />
+                      </Field>
+                    </div>
+                    <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                      Size is rounded down to the nearest lot step so realized risk never exceeds your selected %.
+                    </p>
+                  </div>
+                )}
                 <p className="mt-3 rounded-md border border-border/40 bg-background/40 p-2.5 text-[11px] leading-relaxed text-muted-foreground">
                   {ASSET_TYPES.find((a) => a.value === s.assetType)!.hint}
                   {s.sizingMode === "quick" && (
@@ -593,6 +685,10 @@ function TradePlanChecker() {
                     growthHref={growthHref}
                     isGenerating={isGenerating}
                     onSave={handleSave}
+                    breakdown={breakdown}
+                    howCalculated={howCalculated}
+                    stopDistanceText={stopDistanceText}
+                    targetDistanceText={targetDistanceText}
                   />
                 ) : result.sizingReady ? (
                   <PartialResults sizeText={sizeText} sizeNote={sizeNote} riskConfirmText={riskConfirmText} checks={checks} />
@@ -1065,11 +1161,80 @@ function MarketContext({ newsHref }: { newsHref?: string }) {
   );
 }
 
+type Breakdown = {
+  size: number;
+  underlyingQty: number;
+  unit: string;
+  label: string;
+  perPointMove: number;
+  perUnitMove: number;
+  pointSize: number;
+} | null;
+
+type HowCalculated = {
+  balance: number;
+  riskPct: number;
+  dollarRisk: number;
+  stopDist: number;
+  contractSize: number;
+  riskPerLot: number;
+  size: number;
+  unit: string;
+} | null;
+
+function fmtLot(n: number) {
+  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function fmtQty(n: number) {
+  return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+function PositionBreakdown({ b }: { b: NonNullable<Breakdown> }) {
+  const pointLabel = b.pointSize === 0.01 ? "$0.01" : `$${b.pointSize}`;
+  return (
+    <div className="rounded-xl border border-border/60 bg-secondary/20 p-4">
+      <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-foreground/70">
+        <Package className="h-3.5 w-3.5" /> Position Breakdown
+      </div>
+      <div className="space-y-1 font-mono text-sm text-foreground/90">
+        <div className="text-lg font-bold tracking-tight text-foreground">{fmtLot(b.size)} lots</div>
+        <div className="text-foreground/80">{fmtQty(b.underlyingQty)} {b.unit}{b.label ? ` ${b.label}` : ""}</div>
+        <div className="text-muted-foreground">${b.perPointMove.toFixed(2)} per {pointLabel} move</div>
+        <div className="text-muted-foreground">${b.perUnitMove.toFixed(2)} per $1.00 move</div>
+      </div>
+    </div>
+  );
+}
+
+function HowSizeCalculated({ h }: { h: NonNullable<HowCalculated> }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-lg border border-border/50 bg-background/30">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-foreground/75 hover:text-foreground"
+      >
+        <span className="flex items-center gap-1.5"><Info className="h-3.5 w-3.5" /> How size was calculated</span>
+        <span className="text-muted-foreground">{open ? "−" : "+"}</span>
+      </button>
+      {open && (
+        <div className="border-t border-border/50 px-3 py-2.5 font-mono text-xs leading-relaxed text-foreground/85">
+          <div>{fmtMoney(h.balance)} × {h.riskPct}% = {fmtMoney(h.dollarRisk)} risk</div>
+          <div>${h.stopDist.toFixed(2)} stop × {fmtQty(h.contractSize)} {h.unit} = {fmtMoney(h.riskPerLot)} risk per 1 lot</div>
+          <div>{fmtMoney(h.dollarRisk)} ÷ {fmtMoney(h.riskPerLot)} = {fmtLot(h.size)} lots</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ResultsView({
   asset, assetType, direction, riskText, rewardText, rrText,
   riskPct, rr, directionMismatch,
   grade, verdict, coaching, warnings, moveToStopText, moveToTargetText,
   sizeText, sizeNote, riskConfirmText, growthHref, isGenerating, onSave,
+  breakdown, howCalculated, stopDistanceText, targetDistanceText,
 }: {
   asset: string; assetType: AssetType; direction: Direction; riskText: string; rewardText: string; rrText: string;
   riskPct: number; rr: number | null; directionMismatch: boolean;
@@ -1077,6 +1242,8 @@ function ResultsView({
   moveToStopText: string; moveToTargetText: string; sizeText: string;
   sizeNote: string | null; riskConfirmText: string | null; growthHref: string; isGenerating: boolean;
   onSave: (executionScore: number) => void;
+  breakdown: Breakdown; howCalculated: HowCalculated;
+  stopDistanceText: string | null; targetDistanceText: string | null;
 }) {
   const [confirmationState, setConfirmationState] = useState<TriState[]>(() =>
     CONFIRMATION_ITEMS.map(() => "review")
@@ -1119,6 +1286,9 @@ function ResultsView({
         ) : null}
       </div>
 
+      {breakdown && <PositionBreakdown b={breakdown} />}
+      {howCalculated && <HowSizeCalculated h={howCalculated} />}
+
       {/* 3. Risk / Reward / R:R */}
       <div className="grid grid-cols-3 gap-2">
         <Stat icon={<AlertTriangle className="h-3.5 w-3.5" />} label="Risk" value={riskText} tone="danger" />
@@ -1126,8 +1296,8 @@ function ResultsView({
         <Stat icon={<Scale className="h-3.5 w-3.5" />} label="R : R" value={rrText} tone="neutral" />
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <Stat label="Move to stop" value={moveToStopText} tone="neutral" />
-        <Stat label="Move to target" value={moveToTargetText} tone="neutral" />
+        <Stat label={stopDistanceText ? "Stop distance" : "Move to stop"} value={stopDistanceText ?? moveToStopText} tone="neutral" />
+        <Stat label={targetDistanceText ? "Target distance" : "Move to target"} value={targetDistanceText ?? moveToTargetText} tone="neutral" />
       </div>
 
       <WhyThisTrade verdict={verdict} reasons={reasons} />
