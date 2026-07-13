@@ -1438,6 +1438,13 @@ function MiniItem({ label, value, valueClass }: { label: string; value: string; 
 
 /* ---------- Trade Card Image Export ---------- */
 
+type TradeCardBreakdown = {
+  sizeText: string;      // "1.25 lots"
+  qtyText: string;       // "125 oz Gold"
+  perPointText: string;  // "$1.25 per $0.01 move"
+  perUnitText: string;   // "$125.00 per $1.00 move"
+};
+
 type TradeCardData = {
   asset: string;
   direction: Direction;
@@ -1454,10 +1461,11 @@ type TradeCardData = {
   rewardText: string;
   rrText: string;
   sizeText: string;
-  moveStopText: string;
-  moveTargetText: string;
+  stopDistanceText: string;
+  targetDistanceText: string;
   howCalcText: string | null;
   validSubText: string;
+  breakdown: TradeCardBreakdown | null;
 };
 
 
