@@ -361,32 +361,40 @@ function TradePlanChecker() {
       : null;
 
   const [isGenerating, setIsGenerating] = useState(false);
+  const [manualSaveUrl, setManualSaveUrl] = useState<string | null>(null);
 
   const handleSave = (executionScore: number) => {
     if (!result.ready) return;
     // Brief on-screen celebration before the PNG generates — makes the export
     // feel like minting a card, not silently saving a screenshot.
     setIsGenerating(true);
-    setTimeout(() => {
-      downloadTradeCard({
-        asset: s.asset || "UNNAMED",
-        direction: s.direction,
-        grade: result.grade,
-        verdict: result.verdict,
-        executionScore,
-        entry: s.entry,
-        stop: s.stop,
-        tp: s.tp,
-        balanceText: fmtMoney(balanceN!),
-        riskPctText: `${s.riskPct}%`,
-        riskText,
-        rewardText,
-        rrText,
-        sizeText,
-        moveStopText,
-        moveTargetText,
-      });
-      setIsGenerating(false);
+    setTimeout(async () => {
+      try {
+        const blob = await renderTradeCardBlob({
+          asset: s.asset || "UNNAMED",
+          direction: s.direction,
+          grade: result.grade,
+          verdict: result.verdict,
+          executionScore,
+          entry: s.entry,
+          stop: s.stop,
+          tp: s.tp,
+          balanceText: fmtMoney(balanceN!),
+          riskPctText: `${s.riskPct}%`,
+          riskText,
+          rewardText,
+          rrText,
+          sizeText,
+          moveStopText,
+          moveTargetText,
+        });
+        const filename = `pipgrade-${(s.asset || "setup").toLowerCase().replace(/\s+/g, "-")}-${Date.now()}.png`;
+        await saveOrShareTradeCard(blob, filename, setManualSaveUrl);
+      } catch (err) {
+        console.error("Trade card generation failed:", err);
+      } finally {
+        setIsGenerating(false);
+      }
     }, 550);
   };
 
@@ -600,11 +608,42 @@ function TradePlanChecker() {
           This tool is for educational purposes only and does not provide financial advice.
         </p>
       </div>
+
+      {manualSaveUrl && (
+        <ManualSaveOverlay
+          url={manualSaveUrl}
+          onClose={() => {
+            URL.revokeObjectURL(manualSaveUrl);
+            setManualSaveUrl(null);
+          }}
+        />
+      )}
     </div>
   );
 }
 
 /* ---------- Subcomponents ---------- */
+
+// Shown when neither the Web Share API nor the download attribute is
+// available (older iOS Safari, some in-app WebViews) -- long-pressing the
+// image is a baseline capability on essentially every mobile browser.
+function ManualSaveOverlay({ url, onClose }: { url: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-black/90 p-6 backdrop-blur-sm">
+      <p className="text-center text-sm font-medium text-white">
+        Press and hold the image, then choose <span className="text-primary">Save to Photos</span>.
+      </p>
+      <img
+        src={url}
+        alt="PipGrade trade card"
+        className="max-h-[70vh] w-auto rounded-xl border border-white/10 shadow-2xl"
+      />
+      <Button variant="outline" onClick={onClose} className="mt-2">
+        Done
+      </Button>
+    </div>
+  );
+}
 
 function Section({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -1241,14 +1280,18 @@ function drawStar(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: numb
   ctx.restore();
 }
 
-function downloadTradeCard(d: TradeCardData) {
+function renderTradeCardBlob(d: TradeCardData): Promise<Blob> {
+  return new Promise<Blob>((resolve, reject) => {
   const W = 1080;
   const H = 1350;
   const canvas = document.createElement("canvas");
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext("2d");
-  if (!ctx) return;
+  if (!ctx) {
+    reject(new Error("Canvas 2D context unavailable"));
+    return;
+  }
 
   const theme = GRADE_THEME[d.grade];
   const celebratory = d.verdict !== "no";
@@ -1515,16 +1558,63 @@ function downloadTradeCard(d: TradeCardData) {
   ctx.textAlign = "left";
 
   canvas.toBlob((blob) => {
-    if (!blob) return;
-    const url = URL.createObjectURL(blob);
+    if (!blob) {
+      reject(new Error("Canvas toBlob returned null"));
+      return;
+    }
+    resolve(blob);
+  }, "image/png");
+  });
+}
+
+// Cross-platform save/share for the generated trade-card PNG.
+//
+// iOS WebKit (Safari *and* in-app WebViews, e.g. the Lovable preview app) has
+// never reliably supported the classic `<a download>` blob-URL trick -- the
+// click is a silent no-op, which is why "Generate Trade Card" looked broken
+// on iPhone. Web Share API (with a File) is the reliable path there. If that
+// isn't available either (older iOS, some Android WebViews), fall back to a
+// full-screen preview the user can long-press to save, which works
+// everywhere because it doesn't depend on any download API at all.
+async function saveOrShareTradeCard(
+  blob: Blob,
+  filename: string,
+  onManualSaveNeeded: (url: string) => void
+) {
+  try {
+    const file = new File([blob], filename, { type: "image/png" });
+    const nav = navigator as Navigator & { canShare?: (data?: ShareData) => boolean };
+    if (nav.canShare && nav.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: "PipGrade Trade Card" });
+      return;
+    }
+  } catch (err) {
+    // AbortError = user cancelled the native share sheet — that's a
+    // deliberate choice, not a failure, so don't fall through to anything else.
+    if (err instanceof Error && err.name === "AbortError") return;
+    // Any other share failure falls through to the methods below.
+  }
+
+  const isCoarsePointer =
+    typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
+  const url = URL.createObjectURL(blob);
+
+  if (!isCoarsePointer) {
+    // Mouse-driven desktop browsers: the classic download attribute is reliable here.
     const a = document.createElement("a");
     a.href = url;
-    a.download = `pipgrade-${(d.asset || "setup").toLowerCase().replace(/\s+/g, "-")}-${Date.now()}.png`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, "image/png");
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    return;
+  }
+
+  // Touch device with no file-sharing support: show it full-screen so the
+  // user can long-press -> Save Image. Caller owns revoking this URL once
+  // the overlay closes.
+  onManualSaveNeeded(url);
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
