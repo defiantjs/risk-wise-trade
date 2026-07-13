@@ -1182,6 +1182,53 @@ type HowCalculated = {
   unit: string;
 } | null;
 
+function fmtLot(n: number) {
+  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function fmtQty(n: number) {
+  return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+function PositionBreakdown({ b }: { b: NonNullable<Breakdown> }) {
+  const pointLabel = b.pointSize === 0.01 ? "$0.01" : `$${b.pointSize}`;
+  return (
+    <div className="rounded-xl border border-border/60 bg-secondary/20 p-4">
+      <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-foreground/70">
+        <Package className="h-3.5 w-3.5" /> Position Breakdown
+      </div>
+      <div className="space-y-1 font-mono text-sm text-foreground/90">
+        <div className="text-lg font-bold tracking-tight text-foreground">{fmtLot(b.size)} lots</div>
+        <div className="text-foreground/80">{fmtQty(b.underlyingQty)} {b.unit}{b.label ? ` ${b.label}` : ""}</div>
+        <div className="text-muted-foreground">${b.perPointMove.toFixed(2)} per {pointLabel} move</div>
+        <div className="text-muted-foreground">${b.perUnitMove.toFixed(2)} per $1.00 move</div>
+      </div>
+    </div>
+  );
+}
+
+function HowSizeCalculated({ h }: { h: NonNullable<HowCalculated> }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-lg border border-border/50 bg-background/30">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-foreground/75 hover:text-foreground"
+      >
+        <span className="flex items-center gap-1.5"><Info className="h-3.5 w-3.5" /> How size was calculated</span>
+        <span className="text-muted-foreground">{open ? "−" : "+"}</span>
+      </button>
+      {open && (
+        <div className="border-t border-border/50 px-3 py-2.5 font-mono text-xs leading-relaxed text-foreground/85">
+          <div>{fmtMoney(h.balance)} × {h.riskPct}% = {fmtMoney(h.dollarRisk)} risk</div>
+          <div>${h.stopDist.toFixed(2)} stop × {fmtQty(h.contractSize)} {h.unit} = {fmtMoney(h.riskPerLot)} risk per 1 lot</div>
+          <div>{fmtMoney(h.dollarRisk)} ÷ {fmtMoney(h.riskPerLot)} = {fmtLot(h.size)} lots</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ResultsView({
   asset, assetType, direction, riskText, rewardText, rrText,
   riskPct, rr, directionMismatch,
