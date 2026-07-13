@@ -438,6 +438,41 @@ function TradePlanChecker() {
     setIsGenerating(true);
     setTimeout(async () => {
       try {
+        // Enrich move-to-stop / move-to-target with the $ impact so the card
+        // matches the "0.05% · 200 pts · $10.00" format from the mockup.
+        const cardMoveStop =
+          result.dollarRisk !== null && moveStopText !== dash
+            ? `${moveStopText} · ${fmtMoney(result.dollarRisk)}`
+            : moveStopText;
+        const cardMoveTarget =
+          result.reward !== null && moveTargetText !== dash
+            ? `${moveTargetText} · ${fmtMoney(result.reward)}`
+            : moveTargetText;
+
+        // "How size is calculated" one-liner (commodities only) mirrors the
+        // in-app expandable trace so the shared card is self-explanatory.
+        const howCalcText =
+          howCalculated && stopPips !== null && suggestedSizeVal !== null && brokerPointN
+            ? `${fmtMoney(howCalculated.balance)} balance × ${howCalculated.riskPct}% risk = ${fmtMoney(
+                howCalculated.dollarRisk
+              )} max risk. Stop distance (${fmtPips(stopPips)} pts) × ${fmtMoney(
+                suggestedSizeVal * howCalculated.contractSize * brokerPointN
+              )} per pt (${suggestedSizeVal.toFixed(2)} lot) = ${fmtMoney(howCalculated.dollarRisk)} risk.`
+            : null;
+
+
+        const riskSubText =
+          balanceN !== null && riskPctN !== null
+            ? `(${riskPctN}% of ${fmtMoney(balanceN)})`
+            : null;
+
+        const validSubText =
+          result.verdict === "valid"
+            ? "Trend aligned · Risk managed · Execution approved"
+            : result.verdict === "adjust"
+              ? "Reduce size or improve R:R before entry"
+              : "Setup does not meet execution criteria";
+
         const blob = await renderTradeCardBlob({
           asset: s.asset || "UNNAMED",
           direction: s.direction,
@@ -450,11 +485,14 @@ function TradePlanChecker() {
           balanceText: fmtMoney(balanceN!),
           riskPctText: `${s.riskPct}%`,
           riskText,
+          riskSubText,
           rewardText,
           rrText,
           sizeText,
-          moveStopText,
-          moveTargetText,
+          moveStopText: cardMoveStop,
+          moveTargetText: cardMoveTarget,
+          howCalcText,
+          validSubText,
         });
         const filename = `pipgrade-${(s.asset || "setup").toLowerCase().replace(/\s+/g, "-")}-${Date.now()}.png`;
         await saveOrShareTradeCard(blob, filename, setManualSaveUrl);
@@ -465,6 +503,7 @@ function TradePlanChecker() {
       }
     }, 550);
   };
+
 
   // Growth Planner handoff — carry this validated trade's numbers over as a
   // starting point rather than making the trader retype them. Plain query
@@ -1411,12 +1450,16 @@ type TradeCardData = {
   balanceText: string;
   riskPctText: string;
   riskText: string;
+  riskSubText: string | null;
   rewardText: string;
   rrText: string;
   sizeText: string;
   moveStopText: string;
   moveTargetText: string;
+  howCalcText: string | null;
+  validSubText: string;
 };
+
 
 const GRADE_THEME: Record<Grade, { primary: string; secondary: string; glow: string; ring: string; tier: string }> = {
   A: { primary: "#f5d38b", secondary: "#c4b5fd", glow: "rgba(245,211,139,0.38)", ring: "rgba(245,211,139,0.9)", tier: "ELITE" },
@@ -1434,7 +1477,25 @@ function hashCode(str: string): number {
   return h;
 }
 
+function wrapText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number) {
+  const words = text.split(/\s+/);
+  let line = "";
+  let cy = y;
+  for (const word of words) {
+    const test = line ? line + " " + word : word;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      ctx.fillText(line, x, cy);
+      line = word;
+      cy += lineHeight;
+    } else {
+      line = test;
+    }
+  }
+  if (line) ctx.fillText(line, x, cy);
+}
+
 function drawStar(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, color: string, alpha: number) {
+
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.fillStyle = color;
@@ -1632,7 +1693,8 @@ function renderTradeCardBlob(d: TradeCardData): Promise<Blob> {
     no: { label: "✕  DO NOT TAKE THIS TRADE", color: "#ef4444" },
   };
   const v = verdictMap[d.verdict];
-  roundRect(ctx, inner + 34, y, W - inner * 2 - 68, 88, 16);
+  const bannerH = 96;
+  roundRect(ctx, inner + 34, y, W - inner * 2 - 68, bannerH, 16);
   ctx.fillStyle = `${v.color}22`;
   ctx.fill();
   ctx.strokeStyle = `${v.color}66`;
@@ -1640,9 +1702,13 @@ function renderTradeCardBlob(d: TradeCardData): Promise<Blob> {
   ctx.stroke();
   ctx.fillStyle = v.color;
   ctx.font = "800 30px ui-sans-serif, system-ui";
-  ctx.textBaseline = "middle";
-  ctx.fillText(v.label, inner + 64, y + 44);
   ctx.textBaseline = "top";
+  ctx.fillText(v.label, inner + 64, y + 20);
+  ctx.fillStyle = "rgba(255,255,255,0.6)";
+  ctx.font = "500 15px ui-sans-serif, system-ui";
+  ctx.fillText(d.validSubText, inner + 64, y + 58);
+  y = y + bannerH - 88; // keep downstream layout stable
+
 
   // Suggested size block
   y += 126;
@@ -1695,7 +1761,38 @@ function renderTradeCardBlob(d: TradeCardData): Promise<Blob> {
     ctx.fillStyle = stat.color ?? "#ffffff";
     ctx.font = "700 24px ui-monospace, Menlo, monospace";
     ctx.fillText(stat.value, cx + 18, cy + 45);
+    if (stat.label === "DOLLAR RISK" && d.riskSubText) {
+      ctx.fillStyle = "rgba(255,255,255,0.45)";
+      ctx.font = "500 12px ui-sans-serif, system-ui";
+      ctx.fillText(d.riskSubText, cx + 18, cy + 74);
+    }
   });
+
+  // "How size is calculated" callout (commodities only) — mirrors the in-app
+  // expandable trace so a shared card is self-explanatory.
+  if (d.howCalcText) {
+    const boxY = y + 4 * (cellH + 14) + 8;
+    const boxH = 74;
+    const boxW = W - inner * 2 - 68;
+    roundRect(ctx, inner + 34, boxY, boxW, boxH, 14);
+    ctx.fillStyle = "rgba(255,255,255,0.04)";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.08)";
+    ctx.stroke();
+    // small info glyph
+    ctx.fillStyle = "rgba(196,181,253,0.85)";
+    ctx.font = "800 20px ui-sans-serif, system-ui";
+    ctx.textBaseline = "middle";
+    ctx.fillText("ⓘ", inner + 58, boxY + boxH / 2);
+    ctx.textBaseline = "top";
+    ctx.fillStyle = "rgba(255,255,255,0.55)";
+    ctx.font = "600 12px ui-sans-serif, system-ui";
+    ctx.fillText("HOW SIZE IS CALCULATED", inner + 90, boxY + 14);
+    ctx.fillStyle = "rgba(255,255,255,0.82)";
+    ctx.font = "500 14px ui-sans-serif, system-ui";
+    wrapText(ctx, d.howCalcText, inner + 90, boxY + 36, boxW - 110, 18);
+  }
+
 
   // Footer — foil divider, seal, serial, tagline
   const footerRuleY = H - inner - 96;
