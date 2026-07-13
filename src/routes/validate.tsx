@@ -90,6 +90,11 @@ const DEFAULTS = {
   pipValue: "10",
   unitLabel: "lots",
   sizingMode: "quick" as SizingMode,
+  // Broker settings (used for commodity CFDs; hidden for other asset types)
+  contractSize: COMMODITY_BROKER_DEFAULTS.contractSize,
+  pointSize: COMMODITY_BROKER_DEFAULTS.pointSize,
+  minLot: COMMODITY_BROKER_DEFAULTS.minLot,
+  lotStep: COMMODITY_BROKER_DEFAULTS.lotStep,
 };
 
 function num(v: string): number | null {
