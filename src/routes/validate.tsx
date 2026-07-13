@@ -452,13 +452,14 @@ function TradePlanChecker() {
         // "How size is calculated" one-liner (commodities only) mirrors the
         // in-app expandable trace so the shared card is self-explanatory.
         const howCalcText =
-          howCalculated && stopPips !== null && suggestedSizeVal !== null
+          howCalculated && stopPips !== null && suggestedSizeVal !== null && brokerPointN
             ? `${fmtMoney(howCalculated.balance)} balance × ${howCalculated.riskPct}% risk = ${fmtMoney(
                 howCalculated.dollarRisk
               )} max risk. Stop distance (${fmtPips(stopPips)} pts) × ${fmtMoney(
-                howCalculated.riskPerLot / (howCalculated.size > 0 ? howCalculated.size / howCalculated.size : 1) / (howCalculated.stopDist / (brokerPointN || 0.01))
+                suggestedSizeVal * howCalculated.contractSize * brokerPointN
               )} per pt (${suggestedSizeVal.toFixed(2)} lot) = ${fmtMoney(howCalculated.dollarRisk)} risk.`
             : null;
+
 
         const riskSubText =
           balanceN !== null && riskPctN !== null
