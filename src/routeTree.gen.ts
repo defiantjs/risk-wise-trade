@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ValidateRouteImport } from './routes/validate'
+import { Route as ScalingRouteImport } from './routes/scaling'
 import { Route as McpRouteImport } from './routes/mcp'
 import { Route as GrowthRouteImport } from './routes/growth'
 import { Route as IndexRouteImport } from './routes/index'
@@ -20,6 +21,11 @@ import { Route as Char91DotmcpChar93InvokeToolToolRouteImport } from './routes/[
 const ValidateRoute = ValidateRouteImport.update({
   id: '/validate',
   path: '/validate',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ScalingRoute = ScalingRouteImport.update({
+  id: '/scaling',
+  path: '/scaling',
   getParentRoute: () => rootRouteImport,
 } as any)
 const McpRoute = McpRouteImport.update({
@@ -60,6 +66,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/growth': typeof GrowthRoute
   '/mcp': typeof McpRoute
+  '/scaling': typeof ScalingRoute
   '/validate': typeof ValidateRoute
   '/.mcp/list-tools': typeof Char91DotmcpChar93ListToolsRoute
   '/.well-known/oauth-protected-resource': typeof Char91DotwellKnownChar93OauthProtectedResourceRoute
@@ -69,6 +76,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/growth': typeof GrowthRoute
   '/mcp': typeof McpRoute
+  '/scaling': typeof ScalingRoute
   '/validate': typeof ValidateRoute
   '/.mcp/list-tools': typeof Char91DotmcpChar93ListToolsRoute
   '/.well-known/oauth-protected-resource': typeof Char91DotwellKnownChar93OauthProtectedResourceRoute
@@ -79,6 +87,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/growth': typeof GrowthRoute
   '/mcp': typeof McpRoute
+  '/scaling': typeof ScalingRoute
   '/validate': typeof ValidateRoute
   '/.mcp/list-tools': typeof Char91DotmcpChar93ListToolsRoute
   '/.well-known/oauth-protected-resource': typeof Char91DotwellKnownChar93OauthProtectedResourceRoute
@@ -90,6 +99,7 @@ export interface FileRouteTypes {
     | '/'
     | '/growth'
     | '/mcp'
+    | '/scaling'
     | '/validate'
     | '/.mcp/list-tools'
     | '/.well-known/oauth-protected-resource'
@@ -99,6 +109,7 @@ export interface FileRouteTypes {
     | '/'
     | '/growth'
     | '/mcp'
+    | '/scaling'
     | '/validate'
     | '/.mcp/list-tools'
     | '/.well-known/oauth-protected-resource'
@@ -108,6 +119,7 @@ export interface FileRouteTypes {
     | '/'
     | '/growth'
     | '/mcp'
+    | '/scaling'
     | '/validate'
     | '/.mcp/list-tools'
     | '/.well-known/oauth-protected-resource'
@@ -118,6 +130,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   GrowthRoute: typeof GrowthRoute
   McpRoute: typeof McpRoute
+  ScalingRoute: typeof ScalingRoute
   ValidateRoute: typeof ValidateRoute
   Char91DotmcpChar93ListToolsRoute: typeof Char91DotmcpChar93ListToolsRoute
   Char91DotwellKnownChar93OauthProtectedResourceRoute: typeof Char91DotwellKnownChar93OauthProtectedResourceRoute
@@ -131,6 +144,13 @@ declare module '@tanstack/react-router' {
       path: '/validate'
       fullPath: '/validate'
       preLoaderRoute: typeof ValidateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/scaling': {
+      id: '/scaling'
+      path: '/scaling'
+      fullPath: '/scaling'
+      preLoaderRoute: typeof ScalingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/mcp': {
@@ -182,6 +202,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   GrowthRoute: GrowthRoute,
   McpRoute: McpRoute,
+  ScalingRoute: ScalingRoute,
   ValidateRoute: ValidateRoute,
   Char91DotmcpChar93ListToolsRoute: Char91DotmcpChar93ListToolsRoute,
   Char91DotwellKnownChar93OauthProtectedResourceRoute:

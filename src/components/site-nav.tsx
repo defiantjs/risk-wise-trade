@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 const LINKS = [
   { to: "/validate", label: "Validate a Trade" },
   { to: "/growth", label: "Growth Planner" },
+  { to: "/scaling", label: "Scaling Plan" },
 ];
 
 export function SiteNav() {
