@@ -685,6 +685,10 @@ function TradePlanChecker() {
                     growthHref={growthHref}
                     isGenerating={isGenerating}
                     onSave={handleSave}
+                    breakdown={breakdown}
+                    howCalculated={howCalculated}
+                    stopDistanceText={stopDistanceText}
+                    targetDistanceText={targetDistanceText}
                   />
                 ) : result.sizingReady ? (
                   <PartialResults sizeText={sizeText} sizeNote={sizeNote} riskConfirmText={riskConfirmText} checks={checks} />
