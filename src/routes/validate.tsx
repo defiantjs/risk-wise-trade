@@ -42,11 +42,19 @@ const ASSET_TYPES: {
   hint: string;
 }[] = [
   { value: "forex", label: "Forex", pipValue: "10", unit: "lots", hint: "Standard lot ≈ $10/pip on USD-quoted pairs." },
-  { value: "commodities", label: "Metals & Energy", pipValue: "1", unit: "contracts", hint: "Gold/Silver ≈ $1 per $0.01 move; Oil (WTI/Brent) ≈ $1 per $0.01 move on a standard CFD contract. Verify contract size with broker." },
+  { value: "commodities", label: "Metals & Energy", pipValue: "100", unit: "lots", hint: "Gold CFD: 1.00 lot = 100 oz. $1.00 price move at 1 lot = $100. Adjust broker settings if different." },
   { value: "indices", label: "Indices", pipValue: "1", unit: "contracts", hint: "Typical CFD (NAS100, US500, US30…) ≈ $1 per point per contract. Verify with broker." },
   { value: "crypto", label: "Crypto", pipValue: "1", unit: "units", hint: "Spot crypto ≈ $1 per $1 move per 1 unit." },
   { value: "stocks", label: "Stocks / ETFs", pipValue: "1", unit: "shares", hint: "$1 move per share = $1 P&L per share. Applies to ETFs (SPY, QQQ…) too." },
 ];
+
+// Commodity CFD broker defaults (XAUUSD standard). Editable by the trader.
+const COMMODITY_BROKER_DEFAULTS = {
+  contractSize: "100", // 1 lot = 100 oz
+  pointSize: "0.01",
+  minLot: "0.01",
+  lotStep: "0.01",
+};
 
 // Lightweight symbol sniffing so the sizing math doesn't silently stay on
 // Forex defaults when someone types an index, commodity, or stock into the
