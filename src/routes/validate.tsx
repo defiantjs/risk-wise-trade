@@ -1682,12 +1682,12 @@ function renderTradeCardBlob(d: TradeCardData): Promise<Blob> {
   let y = hy + 190;
   ctx.fillStyle = "#ffffff";
   ctx.font = "800 60px ui-sans-serif, system-ui";
+  const assetWidth = ctx.measureText(d.asset.toUpperCase()).width;
   ctx.fillText(d.asset.toUpperCase(), inner + 34, y);
 
   const dirColor = d.direction === "buy" ? "#22c55e" : "#ef4444";
   const dirLabel = d.direction === "buy" ? "LONG" : "SHORT";
   ctx.font = "700 22px ui-sans-serif, system-ui";
-  const assetWidth = ctx.measureText(d.asset.toUpperCase()).width;
   const pillX = inner + 34 + assetWidth + 24;
   const pillY = y + 14;
   const pillW = 110;
