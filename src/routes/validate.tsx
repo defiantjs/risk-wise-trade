@@ -42,19 +42,11 @@ const ASSET_TYPES: {
   hint: string;
 }[] = [
   { value: "forex", label: "Forex", pipValue: "10", unit: "lots", hint: "Standard lot ≈ $10/pip on USD-quoted pairs." },
-  { value: "commodities", label: "Metals & Energy", pipValue: "100", unit: "lots", hint: "Gold CFD: 1.00 lot = 100 oz. $1.00 price move at 1 lot = $100. Adjust broker settings if different." },
+  { value: "commodities", label: "Metals & Energy", pipValue: "1", unit: "contracts", hint: "Gold/Silver ≈ $1 per $0.01 move; Oil (WTI/Brent) ≈ $1 per $0.01 move on a standard CFD contract. Verify contract size with broker." },
   { value: "indices", label: "Indices", pipValue: "1", unit: "contracts", hint: "Typical CFD (NAS100, US500, US30…) ≈ $1 per point per contract. Verify with broker." },
   { value: "crypto", label: "Crypto", pipValue: "1", unit: "units", hint: "Spot crypto ≈ $1 per $1 move per 1 unit." },
   { value: "stocks", label: "Stocks / ETFs", pipValue: "1", unit: "shares", hint: "$1 move per share = $1 P&L per share. Applies to ETFs (SPY, QQQ…) too." },
 ];
-
-// Commodity CFD broker defaults (XAUUSD standard). Editable by the trader.
-const COMMODITY_BROKER_DEFAULTS = {
-  contractSize: "100", // 1 lot = 100 oz
-  pointSize: "0.01",
-  minLot: "0.01",
-  lotStep: "0.01",
-};
 
 // Lightweight symbol sniffing so the sizing math doesn't silently stay on
 // Forex defaults when someone types an index, commodity, or stock into the
@@ -90,11 +82,6 @@ const DEFAULTS = {
   pipValue: "10",
   unitLabel: "lots",
   sizingMode: "quick" as SizingMode,
-  // Broker settings (used for commodity CFDs; hidden for other asset types)
-  contractSize: COMMODITY_BROKER_DEFAULTS.contractSize,
-  pointSize: COMMODITY_BROKER_DEFAULTS.pointSize,
-  minLot: COMMODITY_BROKER_DEFAULTS.minLot,
-  lotStep: COMMODITY_BROKER_DEFAULTS.lotStep,
 };
 
 function num(v: string): number | null {
@@ -197,20 +184,10 @@ function TradePlanChecker() {
     const reward = dollarRisk !== null && rr !== null ? safe(dollarRisk * rr) : null;
     const moveToStopPct = entry! > 0 ? safe((stopDist / entry!) * 100) : null;
     const moveToTargetPct = entry! > 0 && targetDist !== null ? safe((targetDist / entry!) * 100) : null;
-    const rawSize =
+    const suggestedSize =
       pipValue !== null && pipValue > 0 && stopDist > 0 && dollarRisk !== null
         ? safe(dollarRisk / (stopDist * pipValue))
         : null;
-    // For commodity CFDs, snap DOWN to the broker's lot step so realized
-    // risk never exceeds the selected %. Below minLot → not tradeable.
-    const lotStepN = num(s.lotStep);
-    const minLotN = num(s.minLot);
-    let suggestedSize = rawSize;
-    if (s.assetType === "commodities" && rawSize !== null && lotStepN && lotStepN > 0) {
-      const snapped = Math.floor(rawSize / lotStepN) * lotStepN;
-      const min = minLotN && minLotN > 0 ? minLotN : 0;
-      suggestedSize = snapped >= min ? Math.round(snapped * 1e6) / 1e6 : 0;
-    }
 
     if (!ready) {
       return {
@@ -301,12 +278,10 @@ function TradePlanChecker() {
   const moneyOrDash = (n: number | null) => (n === null ? dash : fmtMoney(n));
   const rrText = result.ready && result.rr !== null ? `${result.rr.toFixed(2)} : 1` : dash;
 
-  // Pip / point distance — derived from asset type and pair name.
-  // Commodities use the broker's editable point size (default 0.01 for XAUUSD).
-  const brokerPointN = num(s.pointSize);
+  // Pip / point distance — derived from asset type and pair name
   const pipSize = (() => {
     if (s.assetType === "forex") return /JPY/i.test(s.asset) ? 0.01 : 0.0001;
-    if (s.assetType === "commodities") return brokerPointN && brokerPointN > 0 ? brokerPointN : 0.01;
+    if (s.assetType === "commodities") return 0.01; // gold/silver/oil quoted to the cent on most CFDs
     if (s.assetType === "stocks") return 0.01;
     return 1; // indices, crypto
   })();
@@ -338,49 +313,6 @@ function TradePlanChecker() {
       : dash;
   const riskText = dollarRiskVal !== null ? moneyOrDash(dollarRiskVal) : dash;
   const rewardText = result.ready ? moneyOrDash(result.reward) : dash;
-
-  // Commodity CFD "Position Breakdown" — underlying quantity and per-move P&L.
-  const contractSizeN = num(s.contractSize);
-  const isCommodity = s.assetType === "commodities";
-  const commodityLabel = /XAU|GOLD/i.test(s.asset) ? "Gold" : /XAG|SILVER/i.test(s.asset) ? "Silver" : /WTI|BRENT|OIL/i.test(s.asset) ? "Oil" : "";
-  const commodityUnit = /XAU|XAG|GOLD|SILVER/i.test(s.asset) || !s.asset.trim() ? "oz" : "units";
-  const breakdown =
-    isCommodity && suggestedSizeVal !== null && suggestedSizeVal > 0 && contractSizeN && contractSizeN > 0 && brokerPointN && brokerPointN > 0
-      ? {
-          size: suggestedSizeVal,
-          underlyingQty: suggestedSizeVal * contractSizeN,
-          unit: commodityUnit,
-          label: commodityLabel,
-          perPointMove: suggestedSizeVal * contractSizeN * brokerPointN, // $ per 1 point (e.g. $0.01)
-          perUnitMove: suggestedSizeVal * contractSizeN,                  // $ per $1.00
-          pointSize: brokerPointN,
-        }
-      : null;
-
-  // "How size was calculated" trace (commodities only, when all inputs present).
-  const howCalculated =
-    isCommodity && balanceN !== null && riskPctN !== null && dollarRiskVal !== null && stopDistRaw !== null && contractSizeN && contractSizeN > 0
-      ? {
-          balance: balanceN,
-          riskPct: riskPctN,
-          dollarRisk: dollarRiskVal,
-          stopDist: stopDistRaw,
-          contractSize: contractSizeN,
-          riskPerLot: stopDistRaw * contractSizeN,
-          size: suggestedSizeVal ?? 0,
-          unit: commodityUnit,
-        }
-      : null;
-
-  // Distance in $ and points (commodities).
-  const stopDistanceText =
-    isCommodity && stopDistRaw !== null && stopPips !== null
-      ? `$${stopDistRaw.toFixed(2)} · ${fmtPips(stopPips)} pts`
-      : null;
-  const targetDistanceText =
-    isCommodity && targetDistRaw !== null && targetPips !== null
-      ? `$${targetDistRaw.toFixed(2)} · ${fmtPips(targetPips)} pts`
-      : null;
 
   // Per-field validation for sizing
   const checks: { label: string; ok: boolean; msg?: string }[] = [
@@ -429,7 +361,9 @@ function TradePlanChecker() {
       : null;
 
   const [isGenerating, setIsGenerating] = useState(false);
-  const [manualSaveCard, setManualSaveCard] = useState<ManualSaveCard | null>(null);
+  const [manualSave, setManualSave] = useState<
+    { dataUrl: string; blob: Blob; filename: string } | null
+  >(null);
 
   const handleSave = (executionScore: number) => {
     if (!result.ready) return;
@@ -438,53 +372,7 @@ function TradePlanChecker() {
     setIsGenerating(true);
     setTimeout(async () => {
       try {
-        // Prefer the commodity-style "$X.XX · N pts" distance strings; fall
-        // back to the % · pips string for non-commodity assets.
-        const cardStopDistance =
-          stopDistanceText ??
-          (result.dollarRisk !== null && moveStopText !== dash
-            ? `${moveStopText} · ${fmtMoney(result.dollarRisk)}`
-            : moveStopText);
-        const cardTargetDistance =
-          targetDistanceText ??
-          (result.reward !== null && moveTargetText !== dash
-            ? `${moveTargetText} · ${fmtMoney(result.reward)}`
-            : moveTargetText);
-
-        // "How size is calculated" one-liner (commodities only) mirrors the
-        // in-app expandable trace so the shared card is self-explanatory.
-        const howCalcText =
-          howCalculated && stopPips !== null && suggestedSizeVal !== null && brokerPointN
-            ? `${fmtMoney(howCalculated.balance)} balance × ${howCalculated.riskPct}% risk = ${fmtMoney(
-                howCalculated.dollarRisk
-              )} max risk. Stop distance (${fmtPips(stopPips)} pts) × ${fmtMoney(
-                suggestedSizeVal * howCalculated.contractSize * brokerPointN
-              )} per pt (${suggestedSizeVal.toFixed(2)} lot) = ${fmtMoney(howCalculated.dollarRisk)} risk.`
-            : null;
-
-
-        const riskSubText =
-          balanceN !== null && riskPctN !== null
-            ? `(${riskPctN}% of ${fmtMoney(balanceN)})`
-            : null;
-
-        const validSubText =
-          result.verdict === "valid"
-            ? "Trend aligned · Risk managed · Execution approved"
-            : result.verdict === "adjust"
-              ? "Reduce size or improve R:R before entry"
-              : "Setup does not meet execution criteria";
-
-        const cardBreakdown: TradeCardBreakdown | null = breakdown
-          ? {
-              sizeText: `${fmtLot(breakdown.size)} lots`,
-              qtyText: `${fmtQty(breakdown.underlyingQty)} ${breakdown.unit}${breakdown.label ? ` ${breakdown.label}` : ""}`,
-              perPointText: `$${breakdown.perPointMove.toFixed(2)} per ${breakdown.pointSize === 0.01 ? "$0.01" : `$${breakdown.pointSize}`} move`,
-              perUnitText: `$${breakdown.perUnitMove.toFixed(2)} per $1.00 move`,
-            }
-          : null;
-
-        const blob = await renderTradeCardBlob({
+        const { blob, dataUrl } = await renderTradeCardImage({
           asset: s.asset || "UNNAMED",
           direction: s.direction,
           grade: result.grade,
@@ -496,18 +384,16 @@ function TradePlanChecker() {
           balanceText: fmtMoney(balanceN!),
           riskPctText: `${s.riskPct}%`,
           riskText,
-          riskSubText,
           rewardText,
           rrText,
           sizeText,
-          stopDistanceText: cardStopDistance,
-          targetDistanceText: cardTargetDistance,
-          howCalcText,
-          validSubText,
-          breakdown: cardBreakdown,
+          moveStopText,
+          moveTargetText,
         });
         const filename = `pipgrade-${(s.asset || "setup").toLowerCase().replace(/\s+/g, "-")}-${Date.now()}.png`;
-        await saveOrShareTradeCard(blob, filename, setManualSaveCard);
+        await saveOrShareTradeCard(blob, dataUrl, filename, (dUrl) =>
+          setManualSave({ dataUrl: dUrl, blob, filename })
+        );
       } catch (err) {
         console.error("Trade card generation failed:", err);
       } finally {
@@ -515,7 +401,6 @@ function TradePlanChecker() {
       }
     }, 550);
   };
-
 
   // Growth Planner handoff — carry this validated trade's numbers over as a
   // starting point rather than making the trader retype them. Plain query
@@ -627,30 +512,6 @@ function TradePlanChecker() {
                     <p className="mt-1.5 text-[11px] text-muted-foreground">Value per pip/point for 1 lot, contract, or unit.</p>
                   </div>
                 )}
-                {s.assetType === "commodities" && (
-                  <div className="mt-4 rounded-md border border-border/40 bg-background/40 p-3">
-                    <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-foreground/70">
-                      Broker settings (XAUUSD CFD)
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <Field label="Contract size" hint="per 1 lot">
-                        <Input value={s.contractSize} onChange={(e) => set("contractSize", e.target.value)} inputMode="decimal" className="font-mono" />
-                      </Field>
-                      <Field label="Point size">
-                        <Input value={s.pointSize} onChange={(e) => set("pointSize", e.target.value)} inputMode="decimal" className="font-mono" />
-                      </Field>
-                      <Field label="Minimum lot">
-                        <Input value={s.minLot} onChange={(e) => set("minLot", e.target.value)} inputMode="decimal" className="font-mono" />
-                      </Field>
-                      <Field label="Lot step">
-                        <Input value={s.lotStep} onChange={(e) => set("lotStep", e.target.value)} inputMode="decimal" className="font-mono" />
-                      </Field>
-                    </div>
-                    <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-                      Size is rounded down to the nearest lot step so realized risk never exceeds your selected %.
-                    </p>
-                  </div>
-                )}
                 <p className="mt-3 rounded-md border border-border/40 bg-background/40 p-2.5 text-[11px] leading-relaxed text-muted-foreground">
                   {ASSET_TYPES.find((a) => a.value === s.assetType)!.hint}
                   {s.sizingMode === "quick" && (
@@ -736,10 +597,6 @@ function TradePlanChecker() {
                     growthHref={growthHref}
                     isGenerating={isGenerating}
                     onSave={handleSave}
-                    breakdown={breakdown}
-                    howCalculated={howCalculated}
-                    stopDistanceText={stopDistanceText}
-                    targetDistanceText={targetDistanceText}
                   />
                 ) : result.sizingReady ? (
                   <PartialResults sizeText={sizeText} sizeNote={sizeNote} riskConfirmText={riskConfirmText} checks={checks} />
@@ -756,13 +613,12 @@ function TradePlanChecker() {
         </p>
       </div>
 
-      {manualSaveCard && (
+      {manualSave && (
         <ManualSaveOverlay
-          card={manualSaveCard}
-          onClose={() => {
-            setManualSaveCard(null);
-          }}
-
+          dataUrl={manualSave.dataUrl}
+          blob={manualSave.blob}
+          filename={manualSave.filename}
+          onClose={() => setManualSave(null)}
         />
       )}
     </div>
@@ -771,57 +627,56 @@ function TradePlanChecker() {
 
 /* ---------- Subcomponents ---------- */
 
-type ManualSaveCard = {
-  dataUrl: string;
-  blob: Blob;
-  filename: string;
-};
+// Shown when neither the Web Share API nor the download attribute is
+// available (older iOS Safari, some in-app WebViews) -- long-pressing the
+// image is a baseline capability on essentially every mobile browser.
+function ManualSaveOverlay({
+  dataUrl, blob, filename, onClose,
+}: { dataUrl: string; blob: Blob; filename: string; onClose: () => void }) {
+  const [shareError, setShareError] = useState(false);
 
-async function shareManualSaveCard(card: ManualSaveCard) {
-  try {
-    const file = new File([card.blob], card.filename, { type: "image/png" });
-    const nav = navigator as Navigator & { canShare?: (data?: ShareData) => boolean };
-    if (navigator.share && (!nav.canShare || nav.canShare({ files: [file] }))) {
-      await navigator.share({ files: [file], title: "PipGrade Trade Card" });
-      return;
+  // Called directly from this button's own click — the strongest possible
+  // user-activation context, unlike the first share attempt further up
+  // (which fires from inside an async callback and can lose "freshness" in
+  // strict WebViews). Worth a second, cleaner try before falling back to
+  // the long-press instructions below.
+  const tryShareAgain = async () => {
+    try {
+      const file = new File([blob], filename, { type: "image/png" });
+      const nav = navigator as Navigator & { canShare?: (data?: ShareData) => boolean };
+      if (nav.canShare && nav.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: "PipGrade Trade Card" });
+        return;
+      }
+      setShareError(true);
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") return;
+      setShareError(true);
     }
-  } catch (err) {
-    if (err instanceof Error && err.name === "AbortError") return;
-  }
+  };
 
-  try {
-    const a = document.createElement("a");
-    a.href = card.dataUrl;
-    a.download = card.filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  } catch {
-    window.open(card.dataUrl, "_blank", "noopener,noreferrer");
-  }
-}
-
-// Mobile browsers frequently block generated-file downloads unless the save
-// action is triggered directly from a fresh tap, so the generated card is held
-// here and the Share/Save button performs the native action from that tap.
-function ManualSaveOverlay({ card, onClose }: { card: ManualSaveCard; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-black/90 p-6 backdrop-blur-sm">
       <p className="text-center text-sm font-medium text-white">
-        Tap <span className="text-primary">Share / Save</span>, or press and hold the image to save it.
+        Tap <span className="text-primary">Share Image</span> below, or press and hold the
+        image and choose <span className="text-primary">Save to Photos</span>.
       </p>
-      <Button onClick={() => shareManualSaveCard(card)} className="w-full max-w-xs">
-        <Download className="mr-2 h-4 w-4" />
-        Share / Save Image
-      </Button>
       <img
-        src={card.dataUrl}
+        src={dataUrl}
         alt="PipGrade trade card"
-        className="max-h-[70vh] w-auto rounded-xl border border-white/10 shadow-2xl"
+        className="max-h-[65vh] w-auto rounded-xl border border-white/10 shadow-2xl"
       />
-      <Button variant="outline" onClick={onClose} className="mt-2">
-        Done
-      </Button>
+      {shareError && (
+        <p className="text-center text-xs text-danger">
+          Sharing isn't available here — press and hold the image above instead.
+        </p>
+      )}
+      <div className="flex gap-2">
+        <Button onClick={tryShareAgain}>Share Image</Button>
+        <Button variant="outline" onClick={onClose}>
+          Done
+        </Button>
+      </div>
     </div>
   );
 }
@@ -1246,80 +1101,11 @@ function MarketContext({ newsHref }: { newsHref?: string }) {
   );
 }
 
-type Breakdown = {
-  size: number;
-  underlyingQty: number;
-  unit: string;
-  label: string;
-  perPointMove: number;
-  perUnitMove: number;
-  pointSize: number;
-} | null;
-
-type HowCalculated = {
-  balance: number;
-  riskPct: number;
-  dollarRisk: number;
-  stopDist: number;
-  contractSize: number;
-  riskPerLot: number;
-  size: number;
-  unit: string;
-} | null;
-
-function fmtLot(n: number) {
-  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-function fmtQty(n: number) {
-  return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
-}
-
-function PositionBreakdown({ b }: { b: NonNullable<Breakdown> }) {
-  const pointLabel = b.pointSize === 0.01 ? "$0.01" : `$${b.pointSize}`;
-  return (
-    <div className="rounded-xl border border-border/60 bg-secondary/20 p-4">
-      <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-foreground/70">
-        <Package className="h-3.5 w-3.5" /> Position Breakdown
-      </div>
-      <div className="space-y-1 font-mono text-sm text-foreground/90">
-        <div className="text-lg font-bold tracking-tight text-foreground">{fmtLot(b.size)} lots</div>
-        <div className="text-foreground/80">{fmtQty(b.underlyingQty)} {b.unit}{b.label ? ` ${b.label}` : ""}</div>
-        <div className="text-muted-foreground">${b.perPointMove.toFixed(2)} per {pointLabel} move</div>
-        <div className="text-muted-foreground">${b.perUnitMove.toFixed(2)} per $1.00 move</div>
-      </div>
-    </div>
-  );
-}
-
-function HowSizeCalculated({ h }: { h: NonNullable<HowCalculated> }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="rounded-lg border border-border/50 bg-background/30">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-foreground/75 hover:text-foreground"
-      >
-        <span className="flex items-center gap-1.5"><Info className="h-3.5 w-3.5" /> How size was calculated</span>
-        <span className="text-muted-foreground">{open ? "−" : "+"}</span>
-      </button>
-      {open && (
-        <div className="border-t border-border/50 px-3 py-2.5 font-mono text-xs leading-relaxed text-foreground/85">
-          <div>{fmtMoney(h.balance)} × {h.riskPct}% = {fmtMoney(h.dollarRisk)} risk</div>
-          <div>${h.stopDist.toFixed(2)} stop × {fmtQty(h.contractSize)} {h.unit} = {fmtMoney(h.riskPerLot)} risk per 1 lot</div>
-          <div>{fmtMoney(h.dollarRisk)} ÷ {fmtMoney(h.riskPerLot)} = {fmtLot(h.size)} lots</div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function ResultsView({
   asset, assetType, direction, riskText, rewardText, rrText,
   riskPct, rr, directionMismatch,
   grade, verdict, coaching, warnings, moveToStopText, moveToTargetText,
   sizeText, sizeNote, riskConfirmText, growthHref, isGenerating, onSave,
-  breakdown, howCalculated, stopDistanceText, targetDistanceText,
 }: {
   asset: string; assetType: AssetType; direction: Direction; riskText: string; rewardText: string; rrText: string;
   riskPct: number; rr: number | null; directionMismatch: boolean;
@@ -1327,8 +1113,6 @@ function ResultsView({
   moveToStopText: string; moveToTargetText: string; sizeText: string;
   sizeNote: string | null; riskConfirmText: string | null; growthHref: string; isGenerating: boolean;
   onSave: (executionScore: number) => void;
-  breakdown: Breakdown; howCalculated: HowCalculated;
-  stopDistanceText: string | null; targetDistanceText: string | null;
 }) {
   const [confirmationState, setConfirmationState] = useState<TriState[]>(() =>
     CONFIRMATION_ITEMS.map(() => "review")
@@ -1371,9 +1155,6 @@ function ResultsView({
         ) : null}
       </div>
 
-      {breakdown && <PositionBreakdown b={breakdown} />}
-      {howCalculated && <HowSizeCalculated h={howCalculated} />}
-
       {/* 3. Risk / Reward / R:R */}
       <div className="grid grid-cols-3 gap-2">
         <Stat icon={<AlertTriangle className="h-3.5 w-3.5" />} label="Risk" value={riskText} tone="danger" />
@@ -1381,8 +1162,8 @@ function ResultsView({
         <Stat icon={<Scale className="h-3.5 w-3.5" />} label="R : R" value={rrText} tone="neutral" />
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <Stat label={stopDistanceText ? "Stop distance" : "Move to stop"} value={stopDistanceText ?? moveToStopText} tone="neutral" />
-        <Stat label={targetDistanceText ? "Target distance" : "Move to target"} value={targetDistanceText ?? moveToTargetText} tone="neutral" />
+        <Stat label="Move to stop" value={moveToStopText} tone="neutral" />
+        <Stat label="Move to target" value={moveToTargetText} tone="neutral" />
       </div>
 
       <WhyThisTrade verdict={verdict} reasons={reasons} />
@@ -1484,13 +1265,6 @@ function MiniItem({ label, value, valueClass }: { label: string; value: string; 
 
 /* ---------- Trade Card Image Export ---------- */
 
-type TradeCardBreakdown = {
-  sizeText: string;      // "1.25 lots"
-  qtyText: string;       // "125 oz Gold"
-  perPointText: string;  // "$1.25 per $0.01 move"
-  perUnitText: string;   // "$125.00 per $1.00 move"
-};
-
 type TradeCardData = {
   asset: string;
   direction: Direction;
@@ -1503,17 +1277,12 @@ type TradeCardData = {
   balanceText: string;
   riskPctText: string;
   riskText: string;
-  riskSubText: string | null;
   rewardText: string;
   rrText: string;
   sizeText: string;
-  stopDistanceText: string;
-  targetDistanceText: string;
-  howCalcText: string | null;
-  validSubText: string;
-  breakdown: TradeCardBreakdown | null;
+  moveStopText: string;
+  moveTargetText: string;
 };
-
 
 const GRADE_THEME: Record<Grade, { primary: string; secondary: string; glow: string; ring: string; tier: string }> = {
   A: { primary: "#f5d38b", secondary: "#c4b5fd", glow: "rgba(245,211,139,0.38)", ring: "rgba(245,211,139,0.9)", tier: "ELITE" },
@@ -1531,25 +1300,7 @@ function hashCode(str: string): number {
   return h;
 }
 
-function wrapText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number) {
-  const words = text.split(/\s+/);
-  let line = "";
-  let cy = y;
-  for (const word of words) {
-    const test = line ? line + " " + word : word;
-    if (ctx.measureText(test).width > maxWidth && line) {
-      ctx.fillText(line, x, cy);
-      line = word;
-      cy += lineHeight;
-    } else {
-      line = test;
-    }
-  }
-  if (line) ctx.fillText(line, x, cy);
-}
-
 function drawStar(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, color: string, alpha: number) {
-
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.fillStyle = color;
@@ -1565,8 +1316,8 @@ function drawStar(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: numb
   ctx.restore();
 }
 
-function renderTradeCardBlob(d: TradeCardData): Promise<Blob> {
-  return new Promise<Blob>((resolve, reject) => {
+function renderTradeCardImage(d: TradeCardData): Promise<{ blob: Blob; dataUrl: string }> {
+  return new Promise<{ blob: Blob; dataUrl: string }>((resolve, reject) => {
   const W = 1080;
   const H = 1350;
   const canvas = document.createElement("canvas");
@@ -1716,12 +1467,12 @@ function renderTradeCardBlob(d: TradeCardData): Promise<Blob> {
   let y = hy + 190;
   ctx.fillStyle = "#ffffff";
   ctx.font = "800 60px ui-sans-serif, system-ui";
-  const assetWidth = ctx.measureText(d.asset.toUpperCase()).width;
   ctx.fillText(d.asset.toUpperCase(), inner + 34, y);
 
   const dirColor = d.direction === "buy" ? "#22c55e" : "#ef4444";
   const dirLabel = d.direction === "buy" ? "LONG" : "SHORT";
   ctx.font = "700 22px ui-sans-serif, system-ui";
+  const assetWidth = ctx.measureText(d.asset.toUpperCase()).width;
   const pillX = inner + 34 + assetWidth + 24;
   const pillY = y + 14;
   const pillW = 110;
@@ -1747,8 +1498,7 @@ function renderTradeCardBlob(d: TradeCardData): Promise<Blob> {
     no: { label: "✕  DO NOT TAKE THIS TRADE", color: "#ef4444" },
   };
   const v = verdictMap[d.verdict];
-  const bannerH = 96;
-  roundRect(ctx, inner + 34, y, W - inner * 2 - 68, bannerH, 16);
+  roundRect(ctx, inner + 34, y, W - inner * 2 - 68, 88, 16);
   ctx.fillStyle = `${v.color}22`;
   ctx.fill();
   ctx.strokeStyle = `${v.color}66`;
@@ -1756,64 +1506,29 @@ function renderTradeCardBlob(d: TradeCardData): Promise<Blob> {
   ctx.stroke();
   ctx.fillStyle = v.color;
   ctx.font = "800 30px ui-sans-serif, system-ui";
+  ctx.textBaseline = "middle";
+  ctx.fillText(v.label, inner + 64, y + 44);
   ctx.textBaseline = "top";
-  ctx.fillText(v.label, inner + 64, y + 20);
-  ctx.fillStyle = "rgba(255,255,255,0.6)";
-  ctx.font = "500 15px ui-sans-serif, system-ui";
-  ctx.fillText(d.validSubText, inner + 64, y + 58);
-  y = y + bannerH - 88; // keep downstream layout stable
 
-
-  // Suggested size block — premium purple panel with an inline "Position
-  // Breakdown" sub-panel on the right (commodities only).
+  // Suggested size block
   y += 126;
-  const sizePanelH = d.breakdown ? 180 : 126;
-  const sizePanelW = W - inner * 2 - 68;
-  const sizePanelX = inner + 34;
-  roundRect(ctx, sizePanelX, y, sizePanelW, sizePanelH, 20);
-  const sizeGrad = ctx.createLinearGradient(sizePanelX, y, sizePanelX + sizePanelW, y + sizePanelH);
-  sizeGrad.addColorStop(0, "rgba(168,85,247,0.32)");
-  sizeGrad.addColorStop(1, "rgba(236,72,153,0.08)");
+  roundRect(ctx, inner + 34, y, W - inner * 2 - 68, 126, 18);
+  const sizeGrad = ctx.createLinearGradient(0, y, W, y + 126);
+  sizeGrad.addColorStop(0, "rgba(168,85,247,0.25)");
+  sizeGrad.addColorStop(1, "rgba(236,72,153,0.06)");
   ctx.fillStyle = sizeGrad;
   ctx.fill();
-  ctx.strokeStyle = "rgba(196,181,253,0.5)";
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = "rgba(196,181,253,0.4)";
   ctx.stroke();
   ctx.fillStyle = "#c4b5fd";
   ctx.font = "600 15px ui-sans-serif, system-ui";
-  ctx.fillText("SUGGESTED EXECUTION SIZE", sizePanelX + 30, y + 24);
+  ctx.fillText("SUGGESTED EXECUTION SIZE", inner + 64, y + 20);
   ctx.fillStyle = "#ffffff";
-  ctx.font = "800 56px ui-monospace, Menlo, monospace";
-  ctx.fillText(d.sizeText, sizePanelX + 30, y + 54);
-
-  if (d.breakdown) {
-    const bpW = 300;
-    const bpH = sizePanelH - 32;
-    const bpX = sizePanelX + sizePanelW - bpW - 16;
-    const bpY = y + 16;
-    roundRect(ctx, bpX, bpY, bpW, bpH, 14);
-    ctx.fillStyle = "rgba(15,10,25,0.55)";
-    ctx.fill();
-    ctx.strokeStyle = "rgba(196,181,253,0.35)";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    ctx.fillStyle = "#c4b5fd";
-    ctx.font = "600 12px ui-sans-serif, system-ui";
-    ctx.fillText("POSITION BREAKDOWN", bpX + 18, bpY + 14);
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "800 22px ui-monospace, Menlo, monospace";
-    ctx.fillText(d.breakdown.sizeText, bpX + 18, bpY + 36);
-    ctx.fillStyle = "rgba(255,255,255,0.82)";
-    ctx.font = "500 14px ui-sans-serif, system-ui";
-    ctx.fillText(d.breakdown.qtyText, bpX + 18, bpY + 68);
-    ctx.fillStyle = "rgba(255,255,255,0.6)";
-    ctx.font = "500 13px ui-sans-serif, system-ui";
-    ctx.fillText(d.breakdown.perPointText, bpX + 18, bpY + 92);
-    ctx.fillText(d.breakdown.perUnitText, bpX + 18, bpY + 112);
-  }
+  ctx.font = "800 52px ui-monospace, Menlo, monospace";
+  ctx.fillText(d.sizeText, inner + 64, y + 48);
 
   // Stats grid
-  y += sizePanelH + 20;
+  y += 164;
   const stats: { label: string; value: string; color?: string }[] = [
     { label: "ENTRY", value: d.entry },
     { label: "STOP LOSS", value: d.stop, color: "#ef4444" },
@@ -1821,19 +1536,19 @@ function renderTradeCardBlob(d: TradeCardData): Promise<Blob> {
     { label: "DOLLAR RISK", value: d.riskText, color: "#ef4444" },
     { label: "ESTIMATED REWARD", value: d.rewardText, color: "#22c55e" },
     { label: "RISK : REWARD", value: d.rrText },
-    { label: "STOP DISTANCE", value: d.stopDistanceText },
-    { label: "TARGET DISTANCE", value: d.targetDistanceText },
+    { label: "MOVE TO STOP", value: d.moveStopText },
+    { label: "MOVE TO TARGET", value: d.moveTargetText },
   ];
 
   const cols = 2;
   const gridW = W - inner * 2 - 68;
   const cellW = (gridW - 20) / cols;
-  const cellH = 92;
+  const cellH = 96;
   stats.forEach((stat, i) => {
     const col = i % cols;
     const row = Math.floor(i / cols);
     const cx = inner + 34 + col * (cellW + 20);
-    const cy = y + row * (cellH + 12);
+    const cy = y + row * (cellH + 14);
     roundRect(ctx, cx, cy, cellW, cellH, 14);
     ctx.fillStyle = "rgba(255,255,255,0.04)";
     ctx.fill();
@@ -1842,77 +1557,11 @@ function renderTradeCardBlob(d: TradeCardData): Promise<Blob> {
     ctx.stroke();
     ctx.fillStyle = "rgba(255,255,255,0.5)";
     ctx.font = "600 12px ui-sans-serif, system-ui";
-    ctx.fillText(stat.label, cx + 18, cy + 16);
+    ctx.fillText(stat.label, cx + 18, cy + 18);
     ctx.fillStyle = stat.color ?? "#ffffff";
-    ctx.font = "700 22px ui-monospace, Menlo, monospace";
-    ctx.fillText(stat.value, cx + 18, cy + 42);
-    if (stat.label === "DOLLAR RISK" && d.riskSubText) {
-      ctx.fillStyle = "rgba(255,255,255,0.45)";
-      ctx.font = "500 12px ui-sans-serif, system-ui";
-      ctx.fillText(d.riskSubText, cx + 18, cy + 70);
-    }
+    ctx.font = "700 24px ui-monospace, Menlo, monospace";
+    ctx.fillText(stat.value, cx + 18, cy + 45);
   });
-
-  // "How size is calculated" callout with a SIZE BREAKDOWN pill button on the right.
-  if (d.howCalcText) {
-    const boxY = y + 4 * (cellH + 12) + 14;
-    const boxH = 96;
-    const boxW = W - inner * 2 - 68;
-    const boxX = inner + 34;
-    roundRect(ctx, boxX, boxY, boxW, boxH, 16);
-    ctx.fillStyle = "rgba(255,255,255,0.05)";
-    ctx.fill();
-    ctx.strokeStyle = "rgba(196,181,253,0.22)";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    // Info glyph
-    const glyphCx = boxX + 34;
-    const glyphCy = boxY + boxH / 2;
-    ctx.beginPath();
-    ctx.arc(glyphCx, glyphCy, 14, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(196,181,253,0.55)";
-    ctx.lineWidth = 1.4;
-    ctx.stroke();
-    ctx.fillStyle = "rgba(196,181,253,0.95)";
-    ctx.font = "800 15px ui-sans-serif, system-ui";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("i", glyphCx, glyphCy + 1);
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-
-    // Pill button on the right
-    const btnW = 200;
-    const btnH = 44;
-    const btnX = boxX + boxW - btnW - 20;
-    const btnY = boxY + (boxH - btnH) / 2;
-    roundRect(ctx, btnX, btnY, btnW, btnH, 22);
-    ctx.fillStyle = "rgba(168,85,247,0.18)";
-    ctx.fill();
-    ctx.strokeStyle = "rgba(196,181,253,0.55)";
-    ctx.lineWidth = 1.4;
-    ctx.stroke();
-    ctx.fillStyle = "#e9d5ff";
-    ctx.font = "700 13px ui-sans-serif, system-ui";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("SIZE BREAKDOWN", btnX + btnW / 2, btnY + btnH / 2 + 1);
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-
-    // Header + body text, wrapped so it never runs under the pill button
-    const textX = boxX + 62;
-    const textMaxW = btnX - textX - 20;
-    ctx.fillStyle = "rgba(255,255,255,0.55)";
-    ctx.font = "600 11px ui-sans-serif, system-ui";
-    ctx.fillText("HOW SIZE IS CALCULATED", textX, boxY + 18);
-    ctx.fillStyle = "rgba(255,255,255,0.88)";
-    ctx.font = "500 13px ui-sans-serif, system-ui";
-    wrapText(ctx, d.howCalcText, textX, boxY + 38, textMaxW, 18);
-  }
-
-
 
   // Footer — foil divider, seal, serial, tagline
   const footerRuleY = H - inner - 96;
@@ -1949,7 +1598,12 @@ function renderTradeCardBlob(d: TradeCardData): Promise<Blob> {
       reject(new Error("Canvas toBlob returned null"));
       return;
     }
-    resolve(blob);
+    // A data: URL is self-contained (no dependency on the page's transient
+    // blob registry), which is what makes long-press "Save to Photos" and
+    // the OS share sheet reliably work inside iOS WebKit / WKWebView
+    // wrappers like the Lovable mobile preview -- blob: URLs are the known
+    // failure point there.
+    resolve({ blob, dataUrl: canvas.toDataURL("image/png") });
   }, "image/png");
   });
 }
@@ -1965,35 +1619,46 @@ function renderTradeCardBlob(d: TradeCardData): Promise<Blob> {
 // everywhere because it doesn't depend on any download API at all.
 async function saveOrShareTradeCard(
   blob: Blob,
+  dataUrl: string,
   filename: string,
-  onManualSaveNeeded: (card: ManualSaveCard) => void
+  onManualSaveNeeded: (url: string) => void
 ) {
+  try {
+    const file = new File([blob], filename, { type: "image/png" });
+    const nav = navigator as Navigator & { canShare?: (data?: ShareData) => boolean };
+    if (nav.canShare && nav.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: "PipGrade Trade Card" });
+      return;
+    }
+  } catch (err) {
+    // AbortError = user cancelled the native share sheet — that's a
+    // deliberate choice, not a failure, so don't fall through to anything else.
+    if (err instanceof Error && err.name === "AbortError") return;
+    // Any other share failure (including a WebView silently rejecting the
+    // File payload) falls through to the manual-save overlay below.
+  }
+
   const isCoarsePointer =
     typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
 
-  if (isCoarsePointer) {
-    const dataUrl: string = await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(reader.error ?? new Error("FileReader failed"));
-      reader.readAsDataURL(blob);
-    });
-    onManualSaveNeeded({ dataUrl, blob, filename });
-    return;
-  }
-
-  const url = URL.createObjectURL(blob);
-  try {
+  if (!isCoarsePointer) {
     // Mouse-driven desktop browsers: the classic download attribute is reliable here.
     const a = document.createElement("a");
-    a.href = url;
+    a.href = dataUrl;
     a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-  } finally {
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    return;
   }
+
+  // Touch device: either there's no file-sharing support, or share() was
+  // attempted but we can't confirm the OS-level "Save Image" action actually
+  // wrote to Photos (WKWebView wrappers can silently no-op on that even when
+  // the sheet opens). Show the card full-screen as a guaranteed fallback --
+  // a data: URL here (vs. a blob: URL) is what makes the native long-press
+  // "Save to Photos" action work reliably inside restrictive WebViews.
+  onManualSaveNeeded(dataUrl);
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
