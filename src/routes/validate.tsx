@@ -42,7 +42,7 @@ const ASSET_TYPES: {
   hint: string;
 }[] = [
   { value: "forex", label: "Forex", pipValue: "10", unit: "lots", hint: "Standard lot ≈ $10/pip on USD-quoted pairs." },
-  { value: "commodities", label: "Metals & Energy", pipValue: "1", unit: "contracts", hint: "Gold/Silver ≈ $1 per $0.01 move; Oil (WTI/Brent) ≈ $1 per $0.01 move on a standard CFD contract. Verify contract size with broker." },
+  { value: "commodities", label: "Metals & Energy", pipValue: "1", unit: "lots", hint: "Gold: 1 lot = 100 oz → $1 per $0.01 move per lot. Silver & oil CFDs work the same way — verify contract size with your broker." },
   { value: "indices", label: "Indices", pipValue: "1", unit: "contracts", hint: "Typical CFD (NAS100, US500, US30…) ≈ $1 per point per contract. Verify with broker." },
   { value: "crypto", label: "Crypto", pipValue: "1", unit: "units", hint: "Spot crypto ≈ $1 per $1 move per 1 unit." },
   { value: "stocks", label: "Stocks / ETFs", pipValue: "1", unit: "shares", hint: "$1 move per share = $1 P&L per share. Applies to ETFs (SPY, QQQ…) too." },
@@ -66,6 +66,16 @@ function detectAssetType(pair: string): AssetType | null {
     if (pattern.test(trimmed)) return type;
   }
   return null;
+}
+
+// Pip/point size per asset class. Sizing must convert the stop distance into
+// pips/points before multiplying by the pip value, because pip values are
+// quoted *per pip* (forex: $10 per 0.0001 move per lot), not per 1.0 price
+// move — skipping this conversion overstates forex size by 10,000×.
+function pipSizeFor(assetType: AssetType, asset: string): number {
+  if (assetType === "forex") return /JPY/i.test(asset) ? 0.01 : 0.0001;
+  if (assetType === "commodities") return 0.01; // metals/oil quoted to the cent
+  return 1; // indices, crypto, stocks — a $1 move is 1 point
 }
 
 export const Route = createFileRoute("/validate")({ component: TradePlanChecker });
@@ -184,9 +194,11 @@ function TradePlanChecker() {
     const reward = dollarRisk !== null && rr !== null ? safe(dollarRisk * rr) : null;
     const moveToStopPct = entry! > 0 ? safe((stopDist / entry!) * 100) : null;
     const moveToTargetPct = entry! > 0 && targetDist !== null ? safe((targetDist / entry!) * 100) : null;
+    const pipSize = pipSizeFor(s.assetType, s.asset);
+    const stopPips = stopDist / pipSize;
     const suggestedSize =
-      pipValue !== null && pipValue > 0 && stopDist > 0 && dollarRisk !== null
-        ? safe(dollarRisk / (stopDist * pipValue))
+      pipValue !== null && pipValue > 0 && stopPips > 0 && dollarRisk !== null
+        ? safe(dollarRisk / (stopPips * pipValue))
         : null;
 
     if (!ready) {
@@ -250,10 +262,12 @@ function TradePlanChecker() {
     };
   }, [s]);
 
-  const formatSize = (size: number) => {
-    const label = s.sizingMode === "quick"
+  const sizeUnitLabel =
+    s.sizingMode === "quick"
       ? ASSET_TYPES.find((a) => a.value === s.assetType)!.unit
       : s.unitLabel?.trim() || "units";
+  const formatSize = (size: number) => {
+    const label = sizeUnitLabel;
     const decimalsByAsset: Record<AssetType, number> = {
       forex: 2, commodities: 2, indices: 2, crypto: 4, stocks: 2,
     };
@@ -278,13 +292,9 @@ function TradePlanChecker() {
   const moneyOrDash = (n: number | null) => (n === null ? dash : fmtMoney(n));
   const rrText = result.ready && result.rr !== null ? `${result.rr.toFixed(2)} : 1` : dash;
 
-  // Pip / point distance — derived from asset type and pair name
-  const pipSize = (() => {
-    if (s.assetType === "forex") return /JPY/i.test(s.asset) ? 0.01 : 0.0001;
-    if (s.assetType === "commodities") return 0.01; // gold/silver/oil quoted to the cent on most CFDs
-    if (s.assetType === "stocks") return 0.01;
-    return 1; // indices, crypto
-  })();
+  // Pip / point distance — same pip size the sizing math uses, so the
+  // displayed pips and the suggested size can never disagree.
+  const pipSize = pipSizeFor(s.assetType, s.asset);
   const distanceUnit = s.assetType === "forex" ? "pips" : "pts";
 
   const entryN = num(s.entry);
@@ -313,6 +323,18 @@ function TradePlanChecker() {
       : dash;
   const riskText = dollarRiskVal !== null ? moneyOrDash(dollarRiskVal) : dash;
   const rewardText = result.ready ? moneyOrDash(result.reward) : dash;
+
+  // Step-by-step derivation shown under "How size was calculated" so the
+  // suggested size is auditable, not a black box.
+  const sizeBreakdown: string[] | null =
+    suggestedSizeVal !== null && dollarRiskVal !== null && stopPips !== null && pipN !== null && pipN > 0 && balanceN !== null
+      ? [
+          `Account risk = ${fmtMoney(balanceN)} × ${s.riskPct}% = ${fmtMoney(dollarRiskVal)}`,
+          `Stop distance = ${fmtPips(stopPips)} ${distanceUnit}`,
+          `Risk per 1.00 ${sizeUnitLabel} = ${fmtPips(stopPips)} ${distanceUnit} × ${fmtMoney(pipN)} = ${fmtMoney(stopPips * pipN)}`,
+          `Suggested size = ${fmtMoney(dollarRiskVal)} ÷ ${fmtMoney(stopPips * pipN)} = ${sizeText}`,
+        ]
+      : null;
 
   // Per-field validation for sizing
   const checks: { label: string; ok: boolean; msg?: string }[] = [
