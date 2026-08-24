@@ -62,7 +62,8 @@ export default defineTool({
     }
 
     const dollarRisk = (balance * riskPct) / 100;
-    const suggestedSize = dollarRisk / (stopDist * pv);
+    const stopPips = stopDist / pipSizeFor(assetType, asset);
+    const suggestedSize = dollarRisk / (stopPips * pv);
     const moveToStopPct = (stopDist / entry) * 100;
 
     const targetDist = takeProfit != null ? Math.abs(takeProfit - entry) : null;

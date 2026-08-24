@@ -1663,59 +1663,6 @@ function renderTradeCardImage(d: TradeCardData): Promise<{ blob: Blob; dataUrl: 
   });
 }
 
-// Cross-platform save/share for the generated trade-card PNG.
-//
-// iOS WebKit (Safari *and* in-app WebViews, e.g. the Lovable preview app) has
-// never reliably supported the classic `<a download>` blob-URL trick -- the
-// click is a silent no-op, which is why "Generate Trade Card" looked broken
-// on iPhone. Web Share API (with a File) is the reliable path there. If that
-// isn't available either (older iOS, some Android WebViews), fall back to a
-// full-screen preview the user can long-press to save, which works
-// everywhere because it doesn't depend on any download API at all.
-async function saveOrShareTradeCard(
-  blob: Blob,
-  dataUrl: string,
-  filename: string,
-  onManualSaveNeeded: (url: string) => void
-) {
-  try {
-    const file = new File([blob], filename, { type: "image/png" });
-    const nav = navigator as Navigator & { canShare?: (data?: ShareData) => boolean };
-    if (nav.canShare && nav.canShare({ files: [file] })) {
-      await navigator.share({ files: [file], title: "PipGrade Trade Card" });
-      return;
-    }
-  } catch (err) {
-    // AbortError = user cancelled the native share sheet — that's a
-    // deliberate choice, not a failure, so don't fall through to anything else.
-    if (err instanceof Error && err.name === "AbortError") return;
-    // Any other share failure (including a WebView silently rejecting the
-    // File payload) falls through to the manual-save overlay below.
-  }
-
-  const isCoarsePointer =
-    typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
-
-  if (!isCoarsePointer) {
-    // Mouse-driven desktop browsers: the classic download attribute is reliable here.
-    const a = document.createElement("a");
-    a.href = dataUrl;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    return;
-  }
-
-  // Touch device: either there's no file-sharing support, or share() was
-  // attempted but we can't confirm the OS-level "Save Image" action actually
-  // wrote to Photos (WKWebView wrappers can silently no-op on that even when
-  // the sheet opens). Show the card full-screen as a guaranteed fallback --
-  // a data: URL here (vs. a blob: URL) is what makes the native long-press
-  // "Save to Photos" action work reliably inside restrictive WebViews.
-  onManualSaveNeeded(dataUrl);
-}
-
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
