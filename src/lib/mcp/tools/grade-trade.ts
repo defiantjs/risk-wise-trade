@@ -17,6 +17,14 @@ const UNIT_LABEL: Record<string, string> = {
   stocks: "shares",
 };
 
+// Pip/point size per asset class. Pip values are quoted *per pip* (forex:
+// $10 per 0.0001 move per lot), so the stop distance must be converted to
+// pips/points before sizing — otherwise forex size is overstated by 10,000×.
+function pipSizeFor(assetType: string, asset?: string): number {
+  if (assetType === "forex") return asset && /JPY/i.test(asset) ? 0.01 : 0.0001;
+  return 1; // gold (per oz), indices, crypto, stocks — a $1 move is 1 point
+}
+
 export default defineTool({
   name: "grade_trade_setup",
   title: "Grade a trade setup",
