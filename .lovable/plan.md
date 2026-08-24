@@ -1,107 +1,41 @@
-# Trade Plan Checker — Build Plan
+# PipGrade — Polish & Publish Plan
 
-A single-page, dark-mode trading dashboard that helps traders sanity-check a setup before entering. Everything runs client-side — no account, no backend.
+Four focused work items, then publish a stable production build.
 
-## Layout
+## 1. Fix position-sizing math bug (confirmed, highest priority)
 
-Single route at `/` (replaces the placeholder index). Two-column on desktop, stacked on mobile.
+The live `/validate` tool currently outputs **2,000.00 lots** for the canonical test case:
 
 ```text
- ┌─────────────────────────────────────────────────────┐
- │  Trade Plan Checker                          ◐ logo │
- │  Pre-trade risk & reward sanity check               │
- ├──────────────────────────┬──────────────────────────┤
- │  TRADE INPUTS (card)     │  RESULTS (sticky card)   │
- │                          │                          │
- │  Account balance  $      │  Grade:    A             │
- │  Risk %           %      │  $ Risk:   $250.00       │
- │  Direction   [Buy][Sell] │  $ Reward: $625.00       │
- │  Asset / pair            │  R:R       2.5 : 1       │
- │  Entry price             │                          │
- │  Stop loss               │  ▸ Coaching feedback     │
- │  Take profit             │  ▸ Warnings (if any)     │
- │                          │                          │
- │  [ Reset ]               │                          │
- ├──────────────────────────┴──────────────────────────┤
- │  Disclaimer: educational use only…                  │
- └─────────────────────────────────────────────────────┘
+Balance 10,000 · Risk 1% · Buy EURUSD · Entry 1.1000 · Stop 1.0950 · TP 1.1100
+Expected size: 0.20 lots   →   App shows: 2,000.00 lots (sticky bar + results card)
 ```
 
-Results update live as the trader types — no submit button needed. A subtle empty state shows in the results card until enough fields are filled.
+Root cause: the size formula treats the forex pip value ($10) as $ per 1.0 price move instead of $ per pip (0.0001). It computes `100 / (0.005 × 10) = 2,000` instead of `100 / (50 pips × $10) = 0.20`. The % move / pips display already converts correctly, so only the size path needs the pip-size factor.
 
-## Inputs
+Fix:
+- Add a pip-size constant per asset type (forex: 0.0001, 0.01 for JPY pairs; gold/indices/crypto/stocks: 0.01 point size per existing CFD settings).
+- Apply it in the suggested-size calculation, the mini-bar size, the "How size was calculated" breakdown, and the exported trade card so all four stay consistent.
+- Re-verify the three known cases: EURUSD → 0.20 lots; Gold ($10k, 2%, 2000/1980/2040) → 10 oz (0.10 lots); XAUUSD ($100k, 1%, 4052/4060/4035) → 1.25 lots.
 
-All in one card, grouped logically:
+## 2. Per-route SEO metadata
 
-- **Account balance** — number input, $ prefix
-- **Risk %** — number input, % suffix, default 1
-- **Direction** — segmented Buy / Sell toggle (green / red accents)
-- **Asset / pair** — free text (e.g. "EURUSD", "BTCUSD", "AAPL")
-- **Entry price** — number
-- **Stop loss** — number
-- **Take profit** — number
+Only `__root.tsx` has head metadata today; `/`, `/validate`, `/growth`, `/scaling` have none, so every page shares the same title/description.
 
-Validation (client-side, zod):
-- Balance > 0, risk between 0.01 and 100
-- Entry, stop, TP all > 0
-- For Buy: stop < entry < TP recommended (warn if violated)
-- For Sell: TP < entry < stop recommended (warn if violated)
+- Add a `head()` to each of the four routes with a unique title (<60 chars), meta description (<160 chars), og:title, og:description, og:type, twitter:card.
+- Move the `og:image`/`twitter:image` off `__root` (root shouldn't carry it); keep it on the landing page leaf route.
 
-Invalid / empty fields just suppress the result rather than throwing errors.
+## 3. Mobile QA pass (390px viewport, Playwright)
 
-## Calculations
+Verify and fix any issues found:
+- Results card, verdict banner, sticky mini-bar on all four routes (no overlap, no horizontal overflow).
+- Trade-card export flow on mobile: share/save overlay opens from a fresh tap, image renders, Web Share / save-to-photos path works.
+- Direction pill alignment next to the asset label on the exported card (previous overlap fix — confirm it holds).
 
-- Dollar risk = balance × (risk% / 100)
-- Stop distance = |entry − stop|
-- Target distance = |TP − entry|
-- R:R = target distance / stop distance
-- Reward $ = dollar risk × R:R
+## 4. Publish
 
-## Grading & coaching
+After the above passes build + QA, publish to `risk-wise-trade.lovable.app`.
 
-Grade is derived from R:R plus the risk-% warning:
+## Out of scope (later)
 
-| Condition | Grade | Tone |
-|---|---|---|
-| Risk > 2% | Warning (orange) | overrides grade badge color |
-| R:R ≥ 3 | A | green |
-| R:R 2 – 3 | B | green |
-| R:R 1.5 – 2 | C | yellow |
-| R:R < 1.5 | Warning | red |
-
-Coaching messages (shown verbatim per spec):
-- Risk > 2% → "Risk is aggressive. Consider reducing position size."
-- R:R < 1.5 → "Reward profile is weak. This setup may not justify the risk."
-- 1.5 ≤ R:R < 2 → "Acceptable setup. Confirm structure, timing, and market context."
-- R:R ≥ 2 → "Strong reward profile. Still confirm market structure, DXY alignment, and news timing before entering."
-
-Direction-vs-prices mismatch (e.g. Buy with TP below entry) shows a separate inline warning so the trader catches data-entry mistakes.
-
-## Results card
-
-- Big **Grade badge** at the top (color-coded)
-- Three stat tiles: Dollar Risk, Estimated Reward, R:R ratio (formatted "2.5 : 1")
-- Coaching feedback block with an icon (info / check / warning)
-- Any active warnings listed below
-
-## Visual style
-
-- Dark mode only (force `.dark` on `<html>`)
-- Background: deep slate; cards: slightly lighter slate with subtle border
-- Accent: emerald green for buy / positive, rose red for sell / negative, amber for caution
-- Typography: tight headings, monospaced numbers in the results so digits align
-- Generous spacing, rounded-xl cards, soft shadows — premium dashboard feel
-- Fully responsive: two-column ≥ lg breakpoint, single column below
-
-## Footer
-
-Small muted disclaimer:
-> "This tool is for educational purposes only and does not provide financial advice."
-
-## Technical notes
-
-- TanStack Start, single route file `src/routes/index.tsx`
-- All state via `useState`; results computed with `useMemo`
-- shadcn `Card`, `Input`, `Label`, `Button`, `ToggleGroup`, `Badge` already available
-- No backend, no DB, no auth — pure client calculation
-- Update `__root.tsx` head meta (title "Trade Plan Checker", description, og tags) and add `className="dark"` to `<html>` in the root shell
+- More MCP tools, accounts/saved plans (Lovable Cloud), Pro features — revisit after real-trader feedback.
