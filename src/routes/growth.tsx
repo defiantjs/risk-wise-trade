@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, TrendingUp, Wallet } from "lucide-react";
 import {
   Area,
@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SiteNav } from "@/components/site-nav";
 import { cn } from "@/lib/utils";
+import { loadAccountProfile, saveAccountProfile } from "@/lib/account-profile";
 
 export const Route = createFileRoute("/growth")({
   head: () => ({
@@ -35,7 +36,7 @@ const DEFAULTS = {
   riskPct: "1",
   avgRR: "2",
   winRate: "45",
-  tradesPerMonth: "15",
+  tradesPerWeek: "3",
 };
 
 function num(v: string): number | null {
@@ -54,39 +55,52 @@ function GrowthPlanner() {
   const set = <K extends keyof typeof DEFAULTS>(k: K, v: (typeof DEFAULTS)[K]) =>
     setS((prev) => ({ ...prev, [k]: v }));
 
-  // Handoff from a validated trade on /validate: carry balance / risk / R:R
-  // over as a starting point instead of making the trader retype them.
-  // Plain query params, read client-side only (SSR has no window/location).
-  const [handedOff, setHandedOff] = useState(false);
+  // Shared account profile: seed from it on mount (only fields still at
+  // their defaults, so in-session edits are never clobbered) and auto-save
+  // changes back so Validate and Scaling pick them up without retyping.
+  const [fromProfile, setFromProfile] = useState(false);
+  const profileHydrated = useRef(false);
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    const balance = params.get("balance");
-    const risk = params.get("risk");
-    const rr = params.get("rr");
-    if (!balance && !risk && !rr) return;
-    setS((prev) => ({
-      ...prev,
-      balance: balance ?? prev.balance,
-      riskPct: risk ?? prev.riskPct,
-      avgRR: rr ?? prev.avgRR,
-    }));
-    setHandedOff(true);
+    const p = loadAccountProfile();
+    if (p) {
+      setS((prev) => ({
+        ...prev,
+        balance: prev.balance === DEFAULTS.balance && p.balance ? p.balance : prev.balance,
+        riskPct: prev.riskPct === DEFAULTS.riskPct && p.riskPct ? p.riskPct : prev.riskPct,
+        avgRR: prev.avgRR === DEFAULTS.avgRR && p.avgRR ? p.avgRR : prev.avgRR,
+        winRate: prev.winRate === DEFAULTS.winRate && p.winRate ? p.winRate : prev.winRate,
+        tradesPerWeek:
+          prev.tradesPerWeek === DEFAULTS.tradesPerWeek && p.tradesPerWeek ? p.tradesPerWeek : prev.tradesPerWeek,
+      }));
+      setFromProfile(true);
+    }
+    profileHydrated.current = true;
   }, []);
+
+  useEffect(() => {
+    if (!profileHydrated.current) return;
+    saveAccountProfile({
+      balance: s.balance,
+      riskPct: s.riskPct,
+      avgRR: s.avgRR,
+      winRate: s.winRate,
+      tradesPerWeek: s.tradesPerWeek,
+    });
+  }, [s.balance, s.riskPct, s.avgRR, s.winRate, s.tradesPerWeek]);
 
   const model = useMemo(() => {
     const balance = num(s.balance);
     const riskPct = num(s.riskPct);
     const avgRR = num(s.avgRR);
     const winRate = num(s.winRate);
-    const tradesPerMonth = num(s.tradesPerMonth);
+    const tradesPerWeek = num(s.tradesPerWeek);
 
     const ready =
       balance !== null && balance > 0 &&
       riskPct !== null && riskPct > 0 && riskPct <= 100 &&
       avgRR !== null && avgRR > 0 &&
       winRate !== null && winRate >= 0 && winRate <= 100 &&
-      tradesPerMonth !== null && tradesPerMonth > 0;
+      tradesPerWeek !== null && tradesPerWeek > 0;
 
     if (!ready) return { ready: false as const };
 
@@ -95,7 +109,8 @@ function GrowthPlanner() {
 
     // Expectancy per trade, as a fraction of balance risked at trade time.
     const expectancyFraction = wr * (r * avgRR!) - (1 - wr) * r;
-    const monthlyGrowth = Math.pow(1 + expectancyFraction, tradesPerMonth!) - 1;
+    const tradesPerMonth = tradesPerWeek! * 4.33; // weeks → months for the projection
+    const monthlyGrowth = Math.pow(1 + expectancyFraction, tradesPerMonth) - 1;
 
     const points: { month: number; balance: number }[] = [{ month: 0, balance: balance! }];
     let bal = balance!;
@@ -130,9 +145,9 @@ function GrowthPlanner() {
             If you keep taking only validated setups at this quality and consistency, here&apos;s where the
             system goes. This projects your <em>process</em>, not a promise.
           </p>
-          {handedOff && (
+          {fromProfile && (
             <p className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-[11px] font-medium text-primary">
-              Balance, risk, and R:R carried over from your validated trade &mdash; adjust as needed.
+              Seeded from your shared account &mdash; edits here sync back to Validate and Scaling.
             </p>
           )}
         </header>
@@ -157,8 +172,8 @@ function GrowthPlanner() {
               <Field label="Win rate" hint="% of trades">
                 <SuffixInput value={s.winRate} onChange={(v) => set("winRate", v)} placeholder="45" />
               </Field>
-              <Field label="Trades per month" hint="validated setups taken">
-                <Input value={s.tradesPerMonth} onChange={(e) => set("tradesPerMonth", e.target.value)} placeholder="15" inputMode="decimal" className="font-mono" />
+              <Field label="Trades per week" hint="validated setups taken">
+                <Input value={s.tradesPerWeek} onChange={(e) => set("tradesPerWeek", e.target.value)} placeholder="3" inputMode="decimal" className="font-mono" />
               </Field>
             </CardContent>
           </Card>

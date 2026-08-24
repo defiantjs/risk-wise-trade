@@ -1,6 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Activity } from "lucide-react";
+import { Activity, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAccountProfile } from "@/lib/account-profile";
 
 const LINKS = [
   { to: "/validate", label: "Validate", fullLabel: "Validate a Trade" },
@@ -10,6 +11,16 @@ const LINKS = [
 
 export function SiteNav() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const profile = useAccountProfile();
+
+  // Compact account chip so the cross-tool carry-over is visible. Only
+  // renders once a balance has been saved to the shared profile.
+  const chipLabel = (() => {
+    if (!profile?.balance) return null;
+    const n = Number(profile.balance.replace(/[, _]/g, ""));
+    const balanceText = Number.isFinite(n) ? `$${n.toLocaleString()}` : `$${profile.balance}`;
+    return profile.riskPct ? `${balanceText} · ${profile.riskPct}% risk` : balanceText;
+  })();
 
   return (
     <header className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-6 sm:px-6">
@@ -37,6 +48,15 @@ export function SiteNav() {
           </Link>
         ))}
       </nav>
+      {chipLabel && (
+        <div
+          className="flex items-center gap-1.5 rounded-full border border-border/50 bg-secondary/30 px-3 py-1.5 text-[11px] font-medium text-muted-foreground"
+          title="Your shared account — used across all PipGrade tools"
+        >
+          <Wallet className="h-3 w-3 text-primary" />
+          {chipLabel}
+        </div>
+      )}
     </header>
   );
 }

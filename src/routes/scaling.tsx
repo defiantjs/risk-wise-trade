@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Calendar,
   Copy,
@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SiteNav } from "@/components/site-nav";
 import { cn } from "@/lib/utils";
+import { loadAccountProfile, saveAccountProfile } from "@/lib/account-profile";
 
 export const Route = createFileRoute("/scaling")({
   head: () => ({
@@ -107,6 +108,44 @@ function ScalingPlan() {
   const set = <K extends keyof typeof DEFAULTS>(k: K, v: (typeof DEFAULTS)[K]) =>
     setS((prev) => ({ ...prev, [k]: v }));
   const [copied, setCopied] = useState(false);
+
+  // Shared account profile: seed balance / account type / risk from it on
+  // mount (defaults only — never clobber in-session edits), auto-save back.
+  const profileHydrated = useRef(false);
+  useEffect(() => {
+    const p = loadAccountProfile();
+    if (p) {
+      setS((prev) => {
+        const next = { ...prev };
+        if (prev.balance === DEFAULTS.balance && p.balance) next.balance = p.balance;
+        if (
+          prev.accountType === DEFAULTS.accountType &&
+          (p.accountType === "challenge" || p.accountType === "live" || p.accountType === "personal")
+        ) {
+          next.accountType = p.accountType;
+        }
+        if (p.riskPct && prev.riskChoice === DEFAULTS.riskChoice && prev.riskCustom === DEFAULTS.riskCustom) {
+          if (p.riskPct === "0.25" || p.riskPct === "0.5" || p.riskPct === "1") {
+            next.riskChoice = p.riskPct;
+          } else {
+            next.riskChoice = "custom";
+            next.riskCustom = p.riskPct;
+          }
+        }
+        return next;
+      });
+    }
+    profileHydrated.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!profileHydrated.current) return;
+    saveAccountProfile({
+      balance: s.balance,
+      accountType: s.accountType,
+      riskPct: s.riskChoice === "custom" ? s.riskCustom : s.riskChoice,
+    });
+  }, [s.balance, s.accountType, s.riskChoice, s.riskCustom]);
 
   const model = useMemo(() => {
     const balance = num(s.balance);
