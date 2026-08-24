@@ -42,7 +42,7 @@ const ASSET_TYPES: {
   hint: string;
 }[] = [
   { value: "forex", label: "Forex", pipValue: "10", unit: "lots", hint: "Standard lot ≈ $10/pip on USD-quoted pairs." },
-  { value: "commodities", label: "Metals & Energy", pipValue: "1", unit: "contracts", hint: "Gold/Silver ≈ $1 per $0.01 move; Oil (WTI/Brent) ≈ $1 per $0.01 move on a standard CFD contract. Verify contract size with broker." },
+  { value: "commodities", label: "Metals & Energy", pipValue: "1", unit: "lots", hint: "Gold: 1 lot = 100 oz → $1 per $0.01 move per lot. Silver & oil CFDs work the same way — verify contract size with your broker." },
   { value: "indices", label: "Indices", pipValue: "1", unit: "contracts", hint: "Typical CFD (NAS100, US500, US30…) ≈ $1 per point per contract. Verify with broker." },
   { value: "crypto", label: "Crypto", pipValue: "1", unit: "units", hint: "Spot crypto ≈ $1 per $1 move per 1 unit." },
   { value: "stocks", label: "Stocks / ETFs", pipValue: "1", unit: "shares", hint: "$1 move per share = $1 P&L per share. Applies to ETFs (SPY, QQQ…) too." },
@@ -68,7 +68,29 @@ function detectAssetType(pair: string): AssetType | null {
   return null;
 }
 
-export const Route = createFileRoute("/validate")({ component: TradePlanChecker });
+// Pip/point size per asset class. Sizing must convert the stop distance into
+// pips/points before multiplying by the pip value, because pip values are
+// quoted *per pip* (forex: $10 per 0.0001 move per lot), not per 1.0 price
+// move — skipping this conversion overstates forex size by 10,000×.
+function pipSizeFor(assetType: AssetType, asset: string): number {
+  if (assetType === "forex") return /JPY/i.test(asset) ? 0.01 : 0.0001;
+  if (assetType === "commodities") return 0.01; // metals/oil quoted to the cent
+  return 1; // indices, crypto, stocks — a $1 move is 1 point
+}
+
+export const Route = createFileRoute("/validate")({
+  head: () => ({
+    meta: [
+      { title: "Trade Validator — PipGrade" },
+      { name: "description", content: "Describe your trade and get a live execution report: verdict, letter grade, position size, R:R, and a pre-execution checklist." },
+      { property: "og:title", content: "Trade Validator — PipGrade" },
+      { property: "og:description", content: "Describe your trade and get a live execution report: verdict, letter grade, position size, R:R, and a pre-execution checklist." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
+    ],
+  }),
+  component: TradePlanChecker,
+});
 
 const DEFAULTS = {
   balance: "",
@@ -184,9 +206,11 @@ function TradePlanChecker() {
     const reward = dollarRisk !== null && rr !== null ? safe(dollarRisk * rr) : null;
     const moveToStopPct = entry! > 0 ? safe((stopDist / entry!) * 100) : null;
     const moveToTargetPct = entry! > 0 && targetDist !== null ? safe((targetDist / entry!) * 100) : null;
+    const pipSize = pipSizeFor(s.assetType, s.asset);
+    const stopPips = stopDist / pipSize;
     const suggestedSize =
-      pipValue !== null && pipValue > 0 && stopDist > 0 && dollarRisk !== null
-        ? safe(dollarRisk / (stopDist * pipValue))
+      pipValue !== null && pipValue > 0 && stopPips > 0 && dollarRisk !== null
+        ? safe(dollarRisk / (stopPips * pipValue))
         : null;
 
     if (!ready) {
@@ -250,10 +274,12 @@ function TradePlanChecker() {
     };
   }, [s]);
 
-  const formatSize = (size: number) => {
-    const label = s.sizingMode === "quick"
+  const sizeUnitLabel =
+    s.sizingMode === "quick"
       ? ASSET_TYPES.find((a) => a.value === s.assetType)!.unit
       : s.unitLabel?.trim() || "units";
+  const formatSize = (size: number) => {
+    const label = sizeUnitLabel;
     const decimalsByAsset: Record<AssetType, number> = {
       forex: 2, commodities: 2, indices: 2, crypto: 4, stocks: 2,
     };
@@ -278,13 +304,9 @@ function TradePlanChecker() {
   const moneyOrDash = (n: number | null) => (n === null ? dash : fmtMoney(n));
   const rrText = result.ready && result.rr !== null ? `${result.rr.toFixed(2)} : 1` : dash;
 
-  // Pip / point distance — derived from asset type and pair name
-  const pipSize = (() => {
-    if (s.assetType === "forex") return /JPY/i.test(s.asset) ? 0.01 : 0.0001;
-    if (s.assetType === "commodities") return 0.01; // gold/silver/oil quoted to the cent on most CFDs
-    if (s.assetType === "stocks") return 0.01;
-    return 1; // indices, crypto
-  })();
+  // Pip / point distance — same pip size the sizing math uses, so the
+  // displayed pips and the suggested size can never disagree.
+  const pipSize = pipSizeFor(s.assetType, s.asset);
   const distanceUnit = s.assetType === "forex" ? "pips" : "pts";
 
   const entryN = num(s.entry);
@@ -313,6 +335,18 @@ function TradePlanChecker() {
       : dash;
   const riskText = dollarRiskVal !== null ? moneyOrDash(dollarRiskVal) : dash;
   const rewardText = result.ready ? moneyOrDash(result.reward) : dash;
+
+  // Step-by-step derivation shown under "How size was calculated" so the
+  // suggested size is auditable, not a black box.
+  const sizeBreakdown: string[] | null =
+    suggestedSizeVal !== null && dollarRiskVal !== null && stopPips !== null && pipN !== null && pipN > 0 && balanceN !== null
+      ? [
+          `Account risk = ${fmtMoney(balanceN)} × ${s.riskPct}% = ${fmtMoney(dollarRiskVal)}`,
+          `Stop distance = ${fmtPips(stopPips)} ${distanceUnit}`,
+          `Risk per 1.00 ${sizeUnitLabel} = ${fmtPips(stopPips)} ${distanceUnit} × ${fmtMoney(pipN)} = ${fmtMoney(stopPips * pipN)}`,
+          `Suggested size = ${fmtMoney(dollarRiskVal)} ÷ ${fmtMoney(stopPips * pipN)} = ${sizeText}`,
+        ]
+      : null;
 
   // Per-field validation for sizing
   const checks: { label: string; ok: boolean; msg?: string }[] = [
@@ -391,9 +425,11 @@ function TradePlanChecker() {
           moveTargetText,
         });
         const filename = `pipgrade-${(s.asset || "setup").toLowerCase().replace(/\s+/g, "-")}-${Date.now()}.png`;
-        await saveOrShareTradeCard(blob, dataUrl, filename, (dUrl) =>
-          setManualSave({ dataUrl: dUrl, blob, filename })
-        );
+        // Always route through the preview overlay: its Share / Download
+        // buttons fire from a direct tap, which preserves the user-activation
+        // context iOS Safari/WebViews require for the share sheet — an
+        // auto-share fired from this async callback gets silently rejected.
+        setManualSave({ dataUrl, blob, filename });
       } catch (err) {
         console.error("Trade card generation failed:", err);
       } finally {
@@ -515,7 +551,7 @@ function TradePlanChecker() {
                 <p className="mt-3 rounded-md border border-border/40 bg-background/40 p-2.5 text-[11px] leading-relaxed text-muted-foreground">
                   {ASSET_TYPES.find((a) => a.value === s.assetType)!.hint}
                   {s.sizingMode === "quick" && (
-                    <span className="text-foreground"> Auto-set to ${ASSET_TYPES.find((a) => a.value === s.assetType)!.pipValue}/pip.</span>
+                    <span className="text-foreground"> Auto-set to ${ASSET_TYPES.find((a) => a.value === s.assetType)!.pipValue}/{s.assetType === "forex" ? "pip" : "pt"}.</span>
                   )}
                 </p>
               </Section>
@@ -594,12 +630,13 @@ function TradePlanChecker() {
                     sizeText={sizeText}
                     sizeNote={sizeNote}
                     riskConfirmText={riskConfirmText}
+                    sizeBreakdown={sizeBreakdown}
                     growthHref={growthHref}
                     isGenerating={isGenerating}
                     onSave={handleSave}
                   />
                 ) : result.sizingReady ? (
-                  <PartialResults sizeText={sizeText} sizeNote={sizeNote} riskConfirmText={riskConfirmText} checks={checks} />
+                  <PartialResults sizeText={sizeText} sizeNote={sizeNote} riskConfirmText={riskConfirmText} sizeBreakdown={sizeBreakdown} checks={checks} />
                 ) : (
                   <EmptyResults sizeNote={sizeNote} checks={checks} />
                 )}
@@ -627,20 +664,18 @@ function TradePlanChecker() {
 
 /* ---------- Subcomponents ---------- */
 
-// Shown when neither the Web Share API nor the download attribute is
-// available (older iOS Safari, some in-app WebViews) -- long-pressing the
-// image is a baseline capability on essentially every mobile browser.
+// Step 2 of the trade-card flow: after "Generate Trade Card" renders the PNG,
+// this overlay previews it and offers explicit save actions. Both buttons fire
+// from a direct tap — the strongest user-activation context — which is what
+// iOS Safari / in-app WebViews (e.g. the Lovable preview app) require for the
+// Web Share sheet. Long-press on the data: URL image is the universal fallback.
 function ManualSaveOverlay({
   dataUrl, blob, filename, onClose,
 }: { dataUrl: string; blob: Blob; filename: string; onClose: () => void }) {
   const [shareError, setShareError] = useState(false);
+  const [downloaded, setDownloaded] = useState(false);
 
-  // Called directly from this button's own click — the strongest possible
-  // user-activation context, unlike the first share attempt further up
-  // (which fires from inside an async callback and can lose "freshness" in
-  // strict WebViews). Worth a second, cleaner try before falling back to
-  // the long-press instructions below.
-  const tryShareAgain = async () => {
+  const tryShare = async () => {
     try {
       const file = new File([blob], filename, { type: "image/png" });
       const nav = navigator as Navigator & { canShare?: (data?: ShareData) => boolean };
@@ -655,25 +690,39 @@ function ManualSaveOverlay({
     }
   };
 
+  const download = () => {
+    const a = document.createElement("a");
+    a.href = dataUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setDownloaded(true);
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-black/90 p-6 backdrop-blur-sm">
-      <p className="text-center text-sm font-medium text-white">
-        Tap <span className="text-primary">Share Image</span> below, or press and hold the
-        image and choose <span className="text-primary">Save to Photos</span>.
-      </p>
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 overflow-y-auto bg-black/90 p-6 backdrop-blur-sm">
+      <p className="text-center text-sm font-medium text-white">Your trade card is ready.</p>
       <img
         src={dataUrl}
         alt="PipGrade trade card"
-        className="max-h-[65vh] w-auto rounded-xl border border-white/10 shadow-2xl"
+        className="max-h-[55vh] w-auto rounded-xl border border-white/10 shadow-2xl"
       />
+      <p className="max-w-xs text-center text-xs leading-relaxed text-white/60">
+        On mobile, press and hold the image and choose{" "}
+        <span className="text-primary">Save to Photos</span> — or use the buttons below.
+      </p>
       {shareError && (
         <p className="text-center text-xs text-danger">
           Sharing isn't available here — press and hold the image above instead.
         </p>
       )}
-      <div className="flex gap-2">
-        <Button onClick={tryShareAgain}>Share Image</Button>
-        <Button variant="outline" onClick={onClose}>
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <Button onClick={tryShare}>Share / Save Image</Button>
+        <Button variant="outline" onClick={download}>
+          {downloaded ? "Downloaded ✓" : "Download PNG"}
+        </Button>
+        <Button variant="ghost" onClick={onClose}>
           Done
         </Button>
       </div>
@@ -802,9 +851,25 @@ function EmptyResults({ sizeNote, checks }: { sizeNote: string | null; checks: C
   );
 }
 
+// Expandable step-by-step derivation of the suggested position size.
+function SizeBreakdown({ lines }: { lines: string[] }) {
+  return (
+    <details className="mt-2.5 rounded-md border border-border/40 bg-background/40 text-[11px]">
+      <summary className="cursor-pointer select-none px-2.5 py-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground">
+        How size was calculated
+      </summary>
+      <ol className="space-y-1 border-t border-border/40 px-3 py-2 font-mono text-muted-foreground">
+        {lines.map((line, i) => (
+          <li key={i} className="leading-relaxed">{line}</li>
+        ))}
+      </ol>
+    </details>
+  );
+}
+
 function PartialResults({
-  sizeText, sizeNote, riskConfirmText, checks,
-}: { sizeText: string; sizeNote: string | null; riskConfirmText: string | null; checks: Check[] }) {
+  sizeText, sizeNote, riskConfirmText, sizeBreakdown, checks,
+}: { sizeText: string; sizeNote: string | null; riskConfirmText: string | null; sizeBreakdown: string[] | null; checks: Check[] }) {
   return (
     <div className="space-y-4">
       <ValidationChecklist checks={checks} />
@@ -820,6 +885,7 @@ function PartialResults({
         ) : riskConfirmText ? (
           <p className="mt-1.5 text-xs text-muted-foreground">{riskConfirmText}</p>
         ) : null}
+        {sizeBreakdown && <SizeBreakdown lines={sizeBreakdown} />}
       </div>
       <div className="rounded-lg border border-border/60 bg-secondary/30 p-3 text-xs text-muted-foreground">
         <Info className="mr-1.5 inline h-3.5 w-3.5 align-[-2px] text-muted-foreground" />
@@ -1105,13 +1171,13 @@ function ResultsView({
   asset, assetType, direction, riskText, rewardText, rrText,
   riskPct, rr, directionMismatch,
   grade, verdict, coaching, warnings, moveToStopText, moveToTargetText,
-  sizeText, sizeNote, riskConfirmText, growthHref, isGenerating, onSave,
+  sizeText, sizeNote, riskConfirmText, sizeBreakdown, growthHref, isGenerating, onSave,
 }: {
   asset: string; assetType: AssetType; direction: Direction; riskText: string; rewardText: string; rrText: string;
   riskPct: number; rr: number | null; directionMismatch: boolean;
   grade: Grade; verdict: Verdict; coaching: string; warnings: string[];
   moveToStopText: string; moveToTargetText: string; sizeText: string;
-  sizeNote: string | null; riskConfirmText: string | null; growthHref: string; isGenerating: boolean;
+  sizeNote: string | null; riskConfirmText: string | null; sizeBreakdown: string[] | null; growthHref: string; isGenerating: boolean;
   onSave: (executionScore: number) => void;
 }) {
   const [confirmationState, setConfirmationState] = useState<TriState[]>(() =>
@@ -1153,6 +1219,7 @@ function ResultsView({
         ) : riskConfirmText ? (
           <p className="mt-1.5 text-xs text-muted-foreground">{riskConfirmText}</p>
         ) : null}
+        {sizeBreakdown && <SizeBreakdown lines={sizeBreakdown} />}
       </div>
 
       {/* 3. Risk / Reward / R:R */}
@@ -1606,59 +1673,6 @@ function renderTradeCardImage(d: TradeCardData): Promise<{ blob: Blob; dataUrl: 
     resolve({ blob, dataUrl: canvas.toDataURL("image/png") });
   }, "image/png");
   });
-}
-
-// Cross-platform save/share for the generated trade-card PNG.
-//
-// iOS WebKit (Safari *and* in-app WebViews, e.g. the Lovable preview app) has
-// never reliably supported the classic `<a download>` blob-URL trick -- the
-// click is a silent no-op, which is why "Generate Trade Card" looked broken
-// on iPhone. Web Share API (with a File) is the reliable path there. If that
-// isn't available either (older iOS, some Android WebViews), fall back to a
-// full-screen preview the user can long-press to save, which works
-// everywhere because it doesn't depend on any download API at all.
-async function saveOrShareTradeCard(
-  blob: Blob,
-  dataUrl: string,
-  filename: string,
-  onManualSaveNeeded: (url: string) => void
-) {
-  try {
-    const file = new File([blob], filename, { type: "image/png" });
-    const nav = navigator as Navigator & { canShare?: (data?: ShareData) => boolean };
-    if (nav.canShare && nav.canShare({ files: [file] })) {
-      await navigator.share({ files: [file], title: "PipGrade Trade Card" });
-      return;
-    }
-  } catch (err) {
-    // AbortError = user cancelled the native share sheet — that's a
-    // deliberate choice, not a failure, so don't fall through to anything else.
-    if (err instanceof Error && err.name === "AbortError") return;
-    // Any other share failure (including a WebView silently rejecting the
-    // File payload) falls through to the manual-save overlay below.
-  }
-
-  const isCoarsePointer =
-    typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
-
-  if (!isCoarsePointer) {
-    // Mouse-driven desktop browsers: the classic download attribute is reliable here.
-    const a = document.createElement("a");
-    a.href = dataUrl;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    return;
-  }
-
-  // Touch device: either there's no file-sharing support, or share() was
-  // attempted but we can't confirm the OS-level "Save Image" action actually
-  // wrote to Photos (WKWebView wrappers can silently no-op on that even when
-  // the sheet opens). Show the card full-screen as a guaranteed fallback --
-  // a data: URL here (vs. a blob: URL) is what makes the native long-press
-  // "Save to Photos" action work reliably inside restrictive WebViews.
-  onManualSaveNeeded(dataUrl);
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {

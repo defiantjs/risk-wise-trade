@@ -15,7 +15,19 @@ import { Label } from "@/components/ui/label";
 import { SiteNav } from "@/components/site-nav";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/scaling")({ component: ScalingPlan });
+export const Route = createFileRoute("/scaling")({
+  head: () => ({
+    meta: [
+      { title: "Scaling Plan — PipGrade" },
+      { name: "description", content: "Turn trading goals into a concrete scaling plan — prop challenges, compounding, payouts, and consistency targets." },
+      { property: "og:title", content: "Scaling Plan — PipGrade" },
+      { property: "og:description", content: "Turn trading goals into a concrete scaling plan — prop challenges, compounding, payouts, and consistency targets." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
+    ],
+  }),
+  component: ScalingPlan,
+});
 
 /* ---------- Fixed system assumptions ----------
  * The Scaling Plan intentionally asks only 5 questions. Everything else is

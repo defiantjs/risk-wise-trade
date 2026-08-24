@@ -39,8 +39,6 @@ export const Route = createRootRoute({
       { name: "twitter:site", content: "@Lovable" },
       { name: "twitter:title", content: "PipGrade — Risk & Reward Calculator" },
       { name: "twitter:description", content: "Check risk, reward, and trade quality before entering a trade. Free pre-trade sanity check for traders." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/cb236d9f-b9ae-47e0-8cc6-79e99dee64d7/id-preview-9942304f--15692f78-30e4-4713-844f-110167503fa6.lovable.app-1779205658094.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/cb236d9f-b9ae-47e0-8cc6-79e99dee64d7/id-preview-9942304f--15692f78-30e4-4713-844f-110167503fa6.lovable.app-1779205658094.png" },
     ],
     links: [
       {

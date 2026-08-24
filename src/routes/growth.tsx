@@ -16,7 +16,19 @@ import { Label } from "@/components/ui/label";
 import { SiteNav } from "@/components/site-nav";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/growth")({ component: GrowthPlanner });
+export const Route = createFileRoute("/growth")({
+  head: () => ({
+    meta: [
+      { title: "Growth Planner — PipGrade" },
+      { name: "description", content: "Project account growth from your validated trade metrics — balance, risk %, and R:R — with a disciplined compounding plan." },
+      { property: "og:title", content: "Growth Planner — PipGrade" },
+      { property: "og:description", content: "Project account growth from your validated trade metrics — balance, risk %, and R:R — with a disciplined compounding plan." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
+    ],
+  }),
+  component: GrowthPlanner,
+});
 
 const DEFAULTS = {
   balance: "10000",

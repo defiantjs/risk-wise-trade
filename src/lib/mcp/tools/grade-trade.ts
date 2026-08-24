@@ -17,6 +17,14 @@ const UNIT_LABEL: Record<string, string> = {
   stocks: "shares",
 };
 
+// Pip/point size per asset class. Pip values are quoted *per pip* (forex:
+// $10 per 0.0001 move per lot), so the stop distance must be converted to
+// pips/points before sizing — otherwise forex size is overstated by 10,000×.
+function pipSizeFor(assetType: string, asset?: string): number {
+  if (assetType === "forex") return asset && /JPY/i.test(asset) ? 0.01 : 0.0001;
+  return 1; // gold (per oz), indices, crypto, stocks — a $1 move is 1 point
+}
+
 export default defineTool({
   name: "grade_trade_setup",
   title: "Grade a trade setup",
@@ -37,7 +45,7 @@ export default defineTool({
       .number()
       .positive()
       .optional()
-      .describe("Dollar value per 1.0 price move per 1 unit. Defaults per asset type: forex 10, others 1."),
+      .describe("Dollar value per pip/point per 1 unit. Defaults per asset type: forex $10/pip per lot, others $1 per point."),
     asset: z.string().optional().describe("Optional symbol/pair label, e.g. 'EURUSD', for context."),
   },
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
@@ -54,7 +62,8 @@ export default defineTool({
     }
 
     const dollarRisk = (balance * riskPct) / 100;
-    const suggestedSize = dollarRisk / (stopDist * pv);
+    const stopPips = stopDist / pipSizeFor(assetType, asset);
+    const suggestedSize = dollarRisk / (stopPips * pv);
     const moveToStopPct = (stopDist / entry) * 100;
 
     const targetDist = takeProfit != null ? Math.abs(takeProfit - entry) : null;

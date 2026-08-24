@@ -16,7 +16,21 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/")({ component: Landing });
+export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      { title: "PipGrade — Validate Risk & Grade Trade Setups" },
+      { name: "description", content: "Free pre-trade validator: check risk, reward, R:R, position size, and setup grade before you enter a trade." },
+      { property: "og:title", content: "PipGrade — Validate Risk & Grade Trade Setups" },
+      { property: "og:description", content: "Free pre-trade validator: check risk, reward, R:R, position size, and setup grade before you enter a trade." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/cb236d9f-b9ae-47e0-8cc6-79e99dee64d7/id-preview-9942304f--15692f78-30e4-4713-844f-110167503fa6.lovable.app-1779205658094.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/cb236d9f-b9ae-47e0-8cc6-79e99dee64d7/id-preview-9942304f--15692f78-30e4-4713-844f-110167503fa6.lovable.app-1779205658094.png" },
+    ],
+  }),
+  component: Landing,
+});
 
 const FLOW = ["Analyze", "Validate", "Execute", "Review", "Improve"];
 

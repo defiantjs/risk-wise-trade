@@ -71,7 +71,7 @@
               ]
             },
             "pipValue": {
-              "description": "Dollar value per 1.0 price move per 1 unit. Defaults per asset type: forex 10, others 1.",
+              "description": "Dollar value per pip/point per 1 unit. Defaults per asset type: forex $10/pip per lot, others $1 per point.",
               "type": "number",
               "exclusiveMinimum": 0
             },
