@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { loadAccountProfile, saveAccountProfile } from "@/lib/account-profile";
 
 type AssetType = "forex" | "commodities" | "indices" | "crypto" | "stocks";
 type Direction = "buy" | "sell";
@@ -172,6 +173,27 @@ function TradePlanChecker() {
       setAutoDetected(true);
     }
   }, [s.asset]);
+
+  // Shared account profile: seed balance / risk from it on mount (empty or
+  // untouched fields only, so in-session edits are never clobbered) and
+  // auto-save changes back so Growth and Scaling start from the same account.
+  const profileHydrated = useRef(false);
+  useEffect(() => {
+    const p = loadAccountProfile();
+    if (p) {
+      setS((prev) => ({
+        ...prev,
+        balance: prev.balance.trim() === "" && p.balance ? p.balance : prev.balance,
+        riskPct: prev.riskPct === DEFAULTS.riskPct && p.riskPct ? p.riskPct : prev.riskPct,
+      }));
+    }
+    profileHydrated.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!profileHydrated.current) return;
+    saveAccountProfile({ balance: s.balance, riskPct: s.riskPct });
+  }, [s.balance, s.riskPct]);
 
   const result = useMemo(() => {
     const balance = num(s.balance);
@@ -438,16 +460,9 @@ function TradePlanChecker() {
     }, 550);
   };
 
-  // Growth Planner handoff — carry this validated trade's numbers over as a
-  // starting point rather than making the trader retype them. Plain query
-  // params (read client-side on the Growth Planner) so this doesn't depend
-  // on a typed search schema that isn't defined for that route.
-  const growthHref =
-    result.ready && balanceN !== null
-      ? `/growth?balance=${encodeURIComponent(String(balanceN))}&risk=${encodeURIComponent(s.riskPct)}${
-          result.rr !== null ? `&rr=${encodeURIComponent(result.rr.toFixed(2))}` : ""
-        }`
-      : "/growth";
+  // Growth Planner handoff — balance/risk already live in the shared account
+  // profile (auto-saved above), so Growth seeds itself from there.
+  const growthHref = "/growth";
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -487,6 +502,9 @@ function TradePlanChecker() {
                     <SuffixInput suffix="%" value={s.riskPct} onChange={(v) => set("riskPct", v)} placeholder="1" inputMode="decimal" />
                   </Field>
                 </div>
+                <p className="mt-2 text-[11px] text-muted-foreground/70">
+                  Saved to your account &mdash; shared across all PipGrade tools.
+                </p>
               </Section>
 
               {/* 2. Position Sizing */}
