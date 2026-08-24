@@ -78,7 +78,19 @@ function pipSizeFor(assetType: AssetType, asset: string): number {
   return 1; // indices, crypto, stocks — a $1 move is 1 point
 }
 
-export const Route = createFileRoute("/validate")({ component: TradePlanChecker });
+export const Route = createFileRoute("/validate")({
+  head: () => ({
+    meta: [
+      { title: "Trade Validator — PipGrade" },
+      { name: "description", content: "Describe your trade and get a live execution report: verdict, letter grade, position size, R:R, and a pre-execution checklist." },
+      { property: "og:title", content: "Trade Validator — PipGrade" },
+      { property: "og:description", content: "Describe your trade and get a live execution report: verdict, letter grade, position size, R:R, and a pre-execution checklist." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
+    ],
+  }),
+  component: TradePlanChecker,
+});
 
 const DEFAULTS = {
   balance: "",

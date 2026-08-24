@@ -45,7 +45,7 @@ export default defineTool({
       .number()
       .positive()
       .optional()
-      .describe("Dollar value per 1.0 price move per 1 unit. Defaults per asset type: forex 10, others 1."),
+      .describe("Dollar value per pip/point per 1 unit. Defaults per asset type: forex $10/pip per lot, others $1 per point."),
     asset: z.string().optional().describe("Optional symbol/pair label, e.g. 'EURUSD', for context."),
   },
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
